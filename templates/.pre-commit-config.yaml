@@ -1,0 +1,19 @@
+repos:
+  # Jupyter notebook linting and formatting
+  - repo: https://github.com/nbQA-dev/nbQA
+    rev: 1.9.1
+    hooks:
+      - id: nbqa-ruff
+        name: nbqa-ruff (Jupyter notebook linter and auto-fix)
+        args: [--fix]
+        additional_dependencies: [ruff]
+      - id: nbqa-ruff-format
+        name: nbqa-ruff-format (Jupyter notebook formatter)
+        additional_dependencies: [ruff]
+
+  # Clear notebook outputs on commit only (preserves local outputs)
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.7.1
+    hooks:
+      - id: nbstripout
+        name: nbstripout (Clear notebook outputs for commit)

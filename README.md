@@ -2,11 +2,13 @@
 
 Claude Codeを活用してKaggleコンペを効率的に攻略するためのマザーリポジトリ。
 
+コンペごとのリポジトリ作成時に使用するカスタムコマンドとテンプレートを提供します。各コンペは`competitions/`ディレクトリ以下に独立したリポジトリとして作成され、個別にuvで環境管理を行います。
+
 ## 概要
 
-- **自動コンペ検索・分析**: 参加価値の高いコンペを自動で提案
-- **Discussion自動分析**: コンペのDiscussionを定期的に分析し、知見を蓄積
-- **リポジトリ自動生成**: コンペごとに最適化されたリポジトリを自動作成
+- **カスタムコマンド提供**: Claude Codeで使用するコンペ管理コマンド（/find-comp、/start等）
+- **テンプレート管理**: コンペ用リポジトリのひな形
+- **ディレクトリ管理**: 各コンペの作業領域を整理
 
 ## ワークフロー
 
@@ -14,80 +16,92 @@ Claude Codeを活用してKaggleコンペを効率的に攻略するためのマ
 # 1. おすすめコンペを検索
 /find-comp
 
-# 2. 選択したコンペ用リポジトリを作成（Discussion分析込み）
+# 2. 選択したコンペ用リポジトリを作成（competitions/以下に作成）
 /start titanic
 
-# 3. 定期的にDiscussion更新をチェック
+# 3. コンペディレクトリに移動して作業開始
+cd competitions/titanic
+
+# 4. 個別に環境構築（初回のみ）
+uv init
+uv add pandas scikit-learn matplotlib seaborn jupyter
+
+# 5. 以降の作業はコンペディレクトリ内で実行
+# ノートブック実行、データ分析、モデル訓練など
+
+# 6. 定期的にDiscussion更新をチェック
 /update-insights
 ```
 
 ## ディレクトリ構造
 
 ```
-kaggle-claude-mother/
+kaggle-claude-mother/                 # マザーリポジトリ（コマンド・テンプレート管理）
 ├── .claude/
-│   └── commands/         # カスタムコマンド
-│       ├── find-comp.md  # コンペ検索・提案
-│       ├── start.md      # リポジトリ作成＋初期分析
-│       └── update-insights.md # Discussion更新チェック
-├── templates/
-│   ├── notebooks/        # 分析ノートブック
-│   └── src/             # 共通モジュール
-├── cache/
-│   └── discussions/      # Discussion分析キャッシュ
-└── insights/            # コンペごとの知見DB
+│   └── commands/                     # Claude Codeカスタムコマンド
+│       ├── find-comp.md              # コンペ検索・提案
+│       ├── start.md                  # リポジトリ作成＋初期分析
+│       └── update-insights.md        # Discussion更新チェック
+├── templates/                        # コンペ用テンプレート
+│   ├── notebooks/                    # 分析ノートブック雛形
+│   └── pyproject.toml.template       # uv設定テンプレート
+└── competitions/                     # 各コンペの作業ディレクトリ
+    ├── titanic/                      # 例：タイタニックコンペ
+    │   ├── pyproject.toml            # 個別のuv環境
+    │   ├── .venv/                    # コンペ専用仮想環境
+    │   ├── notebooks/
+    │   ├── data/
+    │   └── insights/
+    └── house-prices/                 # 例：住宅価格予測コンペ
+        ├── pyproject.toml
+        ├── .venv/
+        └── ...
 ```
 
 ## セットアップ
 
-本リポジトリでは、Pythonのパッケージ管理ツールとして`uv`を使用します。`pip`に代わる高速なツールです。
+マザーリポジトリは指示とテンプレートの管理のみ行います。実際の開発環境は各コンペディレクトリで個別に構築します。
 
 ```bash
-# 1. クローン
+# 1. マザーリポジトリのクローン
 ghq get your-username/kaggle-claude-mother
 cd $(ghq root)/github.com/your-username/kaggle-claude-mother
 
-# 2. 環境構築 (uv)
-# pyproject.toml に基づいて仮想環境の作成とパッケージのインストールを行います
-uv sync
-
-# 3. Kaggle CLIのインストール (dev依存)
-# 開発用にKaggle APIクライアントをインストールします
-uv add kaggle --dev
-
-# 4. Kaggle API設定
+# 2. Kaggle API設定
 mkdir -p ~/.kaggle
 cp kaggle.json ~/.kaggle/
 chmod 600 ~/.kaggle/kaggle.json
 
-# 5. Claude Code読み込み
+# 3. Claude Code読み込み
 claude load
+
+# 4. 新しいコンペを始める場合
+/start competition-name  # competitions/competition-name/ が作成される
+
+# 5. コンペディレクトリに移動
+cd competitions/competition-name
+
+# 6. 環境構築と作業実行
+uv init
+uv add pandas scikit-learn matplotlib seaborn jupyter kaggle
+# 以降の分析・モデリング作業はこのディレクトリ内で実行
 ```
 
-## CUIでのKaggle実行フロー
+## 提出方式
 
-Kaggle APIを利用し、CUIのみでNotebookの実行から提出までを完結できます。コマンドは`uv run`経由で実行します。
+**単一ノートブック提出**が標準的な方式です。Kaggleコンペでは1つのノートブックで全ての処理（EDA、前処理、モデリング、予測）を完結させます。
 
-1.  **実行**: ローカルのNotebook (`.ipynb`) をKaggle上で実行します。
-    ```bash
-    uv run kaggle kernels push -p ./path/to/your-notebook.ipynb
-    ```
-2.  **状態確認**: 実行完了を待ちます。
-    ```bash
-    uv run kaggle kernels status your-username/your-notebook-slug
-    ```
-3.  **結果取得**: 出力ファイル (`submission.csv`など) をダウンロードします。
-    ```bash
-    uv run kaggle kernels output your-username/your-notebook-slug -p ./
-    ```
-4.  **提出**: 結果をコンペに提出します。
-    ```bash
-    uv run kaggle competitions submit -c [competition-name] -f submission.csv -m "My submission message"
-    ```
+```bash
+# 各コンペディレクトリに移動して実行
+cd competitions/competition-name
+uv run kaggle kernels push -p ./notebooks/submission.ipynb
+```
 
-## 検討中
+**重要**: 全ての作業（データ分析、モデル訓練、提出）は対応するコンペディレクトリ内で実行してください。
 
-- **テスト**: 現在、効果的なテストの実行方法を検討中です。
+## 共通コードブロック
+
+再利用可能なコードブロックは`templates/`ディレクトリに配置され、新しいコンペ作成時に各コンペディレクトリにコピーされます。
 
 ## カスタムコマンド詳細
 
@@ -99,7 +113,8 @@ Kaggle APIを利用し、CUIのみでNotebookの実行から提出までを完�
 
 ### `/start [competition-name]`
 
-- 新規リポジトリ作成
+- `competitions/[competition-name]/`ディレクトリ作成
+- テンプレートからの初期ファイル配置
 - データダウンロード
 - Discussion分析（上位投稿、有用な手法を抽出）
 - 初期EDA自動実行
@@ -107,7 +122,7 @@ Kaggle APIを利用し、CUIのみでNotebookの実行から提出までを完�
 ### `/update-insights`
 
 - 前回チェック以降の新規Discussionを分析
-- `insights/[competition]/`に知見を追記
+- 各コンペの`insights/`ディレクトリに知見を追記
 - 重要な更新があれば通知
 
 ## Discussion分析機能
@@ -121,16 +136,30 @@ Kaggle APIを利用し、CUIのみでNotebookの実行から提出までを完�
 キャッシュ戦略：
 
 - 初回実行時：全Discussion取得
-- 2回目以降：差分のみ取得（`cache/discussions/[comp-name]/last_check.json`）
+- 2回目以降：差分のみ取得（各コンペの`cache/discussions/last_check.json`）
 
-## 生成されるリポジトリ構造
+## リポジトリ管理方針
+
+**マルチリポジトリ管理**: 各コンペは独立したGitリポジトリとして管理されます。マザーリポジトリとは別の個別リポジトリです。
+
+各コンペは`competitions/`ディレクトリ以下で管理され、以下の構造に従います：
 
 ```
-kaggle-[competition-name]/
+competitions/[competition-name]/
+├── pyproject.toml           # uv設定（コンペ専用依存関係）
+├── .venv/                   # 仮想環境（個別管理）
 ├── notebooks/
-│   ├── 01_eda_auto.ipynb    # 自動生成されたEDA
-│   └── 02_baseline.ipynb    # Discussion分析に基づくベースライン
+│   └── submission.ipynb     # 提出用の単一ノートブック
+├── data/                    # ダウンロードしたデータセット
 ├── insights/
 │   └── discussion_summary.md # 抽出された知見
-└── src/                     # マザーリポジトリから継承
+└── cache/
+    └── discussions/         # Discussion分析キャッシュ
 ```
+
+**管理方針:**
+- 各コンペは`competitions/`以下で独立したGitリポジトリとして管理
+- コンペごとに独立したuv環境を構築
+- マザーリポジトリ、各コンペリポジトリは完全に分離
+- **重要**: マザーリポジトリ直下にはコンペデータやモデルファイルは置かない
+- テンプレートとカスタムコマンドのみをマザーで管理
