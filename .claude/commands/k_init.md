@@ -42,12 +42,70 @@ unzip ./data/[competition-name].zip -d ./data/
 ```
 
 ### 4. テンプレートファイルのコピー
-- **カスタムスラッシュコマンド**: `templates/custom-slash-commands/` 内の全ファイルを `.claude/commands/` にコピー
-  - 例: `k_update-insights.md` → `competitions/[competition-name]/.claude/commands/k_update-insights.md`
-- **プロジェクト設定**: `templates/pyproject.toml.template` を `pyproject.toml` としてコピー
-  - コンペ名に応じた適切な設定に調整
-- **その他テンプレート**: `templates/` 内の追加ファイルがあれば適切な位置にコピー
-- リポジトリ独立性を確保し、コンペ専用のワークフローを提供
+以下の具体的なコマンドを順番に実行してテンプレートを安全にコピー:
+
+```bash
+# 4.1 必要なディレクトリの作成（エラーハンドリング付き）
+mkdir -p "competitions/[competition-name]/.claude/commands" || {
+    echo "Error: Failed to create .claude/commands directory"
+    exit 1
+}
+
+# 4.2 カスタムスラッシュコマンドのコピー（存在確認付き）
+if [ -d "templates/custom-slash-commands" ]; then
+    cp -r templates/custom-slash-commands/* "competitions/[competition-name]/.claude/commands/" 2>/dev/null && \
+    echo "✓ Custom slash commands copied successfully" || \
+    echo "Warning: Some custom slash commands may not have been copied"
+else
+    echo "Warning: templates/custom-slash-commands directory not found"
+fi
+
+# 4.3 pyproject.toml設定ファイルのコピーと調整
+if [ -f "templates/pyproject.toml.template" ]; then
+    cp "templates/pyproject.toml.template" "competitions/[competition-name]/pyproject.toml" && \
+    echo "✓ pyproject.toml template copied successfully" || {
+        echo "Error: Failed to copy pyproject.toml template"
+        exit 1
+    }
+    
+    # プロジェクト名をコンペ名に置換
+    sed -i 's/name = "kaggle-competition"/name = "[competition-name]"/' \
+        "competitions/[competition-name]/pyproject.toml" 2>/dev/null || \
+        echo "Warning: Failed to update project name in pyproject.toml"
+    
+    # 説明をコンペ固有に更新
+    sed -i 's/description = "Kaggle competition workspace"/description = "[competition-name] Kaggle competition workspace"/' \
+        "competitions/[competition-name]/pyproject.toml" 2>/dev/null || \
+        echo "Warning: Failed to update project description"
+else
+    echo "Error: templates/pyproject.toml.template not found"
+    exit 1
+fi
+
+# 4.4 追加テンプレートファイルの処理（将来の拡張対応）
+if [ -d "templates/notebooks" ]; then
+    mkdir -p "competitions/[competition-name]/notebooks"
+    cp -r templates/notebooks/* "competitions/[competition-name]/notebooks/" 2>/dev/null && \
+    echo "✓ Notebook templates copied" || \
+    echo "Warning: Notebook templates copy failed"
+fi
+
+# 4.5 コピー作業の検証
+echo "=== Template Copy Verification ==="
+echo "Checking copied files:"
+ls -la "competitions/[competition-name]/.claude/commands/" 2>/dev/null | grep -v "total" || echo "No custom commands copied"
+echo "pyproject.toml status:"
+[ -f "competitions/[competition-name]/pyproject.toml" ] && echo "✓ pyproject.toml exists" || echo "✗ pyproject.toml missing"
+echo "==============================="
+```
+
+**コピー作業のポイント:**
+- **エラーハンドリング**: 各ステップで失敗時の適切な処理を実装
+- **存在確認**: ファイル・ディレクトリの存在を事前確認
+- **プレースホルダー置換**: `[competition-name]` を実際のコンペ名に自動置換
+- **検証ステップ**: コピー完了後に結果を確認・報告
+- **段階的処理**: 部分的な失敗でも可能な限り処理を継続
+- **拡張性**: 将来のテンプレート追加に対応した構造
 
 ### 5. コンペリポジトリ内での追加セットアップ
 ```bash
