@@ -43,10 +43,12 @@ dynamic_competition_manager:
 # 各コンペごとに独立したエージェント連携（最大3コンペ並行）
 per_competition_orchestration:
   competition_instance: "{competition_name}"
+  working_directory: "competitions/{competition_name}/"
   
   planner_agent:
     trigger: competition_selected
     scope: single_competition
+    execution_context: "cd competitions/{competition_name}"
     auto_actions:
       - create_strategy_issue(competition_specific)
       - analyze_medal_probability(independent)
@@ -55,6 +57,7 @@ per_competition_orchestration:
   analyzer_agent:
     trigger: strategy_issue_created
     scope: single_competition
+    execution_context: "cd competitions/{competition_name}"
     auto_actions:
       - deep_dive_grandmaster_solutions(competition_focused)
       - research_latest_techniques(domain_specific)
@@ -64,6 +67,7 @@ per_competition_orchestration:
   executor_agent:
     trigger: analysis_completed
     scope: single_competition
+    execution_context: "cd competitions/{competition_name}"
     auto_actions:
       - setup_cuml_gpu_environment(dedicated_resources)
       - implement_owen_zhang_methods(competition_tailored)
@@ -73,6 +77,7 @@ per_competition_orchestration:
   monitor_agent:
     trigger: continuous
     scope: single_competition
+    execution_context: "cd competitions/{competition_name}"
     auto_actions:
       - analyze_experiment_failures(competition_focused)
       - accumulate_knowledge_base(cross_competition_learning)
@@ -119,19 +124,93 @@ continuous_learning:
 # マザーリポジトリ自動改善
 retrospective_agent:
   trigger: competition_ended_or_withdrawal_decision
+  
+  issue_creation_spec:
+    title_format: "System Improvement Request: [Analysis Type] - [Competition/System]"
+    labels:
+      - "agent:retrospective"
+      - "priority:system-improvement"
+      - "status:analysis-complete"
+      - "type:[performance|bottleneck|strategy|technical]"
+    
+    body_structure:
+      analysis_results:
+        - competition_context: "コンペ名・期間・最終順位・メダル結果"
+        - performance_metrics: "CV/LBスコア・処理時間・GPU使用率・メモリ効率"
+        - bottleneck_identification: "特定されたボトルネック・エラー・非効率箇所"
+        
+      root_cause_analysis:
+        - technical_issues: "技術的問題・ライブラリ・コード品質・最適化不足"
+        - strategy_issues: "戦略判断・コンペ選択・撤退タイミング・確率算出"
+        - coordination_issues: "エージェント連携・Issue管理・フロー効率性"
+        
+      improvement_proposals:
+        - code_changes: "具体的コード修正案・ファイルパス・実装詳細"
+        - strategy_updates: "戦略アルゴリズム改善・確率モデル調整"
+        - system_enhancements: "エージェント連携・自動化フロー最適化"
+        - template_improvements: "テンプレート・コマンド・設定ファイル改良"
+        
+      implementation_priority:
+        - critical: "メダル獲得に直結・即座対応必要"
+        - high: "効率大幅改善・次コンペ前実装推奨"
+        - medium: "長期的改善・余裕時実装"
+        
   auto_actions:
-    - analyze_agent_collaboration_bottlenecks()
-    - identify_code_optimization_opportunities()
-    - evaluate_strategy_algorithm_effectiveness()
-    - auto_update_mother_repository_code()
-    - improve_agent_coordination_logic()
-    - optimize_technical_approach_templates()
-    - enhance_medal_probability_calculation()
-  deliverables:
-    - updated_agent_scripts()
-    - improved_coordination_algorithms()
-    - enhanced_strategy_templates()
-    - optimized_technical_configurations()
+    - analyze_competition_results(medal_outcome, performance_data)
+    - identify_system_bottlenecks(agent_coordination, technical_stack)
+    - evaluate_strategy_effectiveness(probability_accuracy, selection_success)
+    - create_structured_improvement_issue(with_labels_and_detailed_body)
+    - notify_self_improvement_agent(issue_created)
+
+# 自己改善実行エージェント
+self_improvement_agent:
+  trigger: retrospective_issue_created
+  
+  issue_processing:
+    target_labels: ["agent:retrospective", "status:analysis-complete"]
+    priority_handling:
+      - critical: immediate_implementation
+      - high: schedule_within_24h
+      - medium: queue_for_maintenance_window
+      
+  implementation_workflow:
+    code_improvement:
+      - review_proposed_changes(file_paths, implementation_details)
+      - create_feature_branch(improvement-{issue_number})
+      - implement_code_changes(templates, commands, coordination_logic)
+      - run_automated_tests(validation, regression_check)
+      - update_documentation(README, command_specs)
+      
+    strategy_optimization:
+      - update_probability_models(medal_calculation_algorithms)
+      - refine_competition_selection_logic(scoring_weights)
+      - optimize_withdrawal_thresholds(timing_parameters)
+      - enhance_portfolio_balancing(resource_allocation)
+      
+    system_enhancement:
+      - improve_agent_coordination(issue_management, notification_flow)
+      - optimize_automation_triggers(schedule, condition_logic)
+      - enhance_monitoring_capabilities(performance_tracking)
+      - update_error_handling(retry_logic, fallback_mechanisms)
+      
+  completion_workflow:
+    validation:
+      - verify_implementation_completeness(all_proposed_changes)
+      - test_system_functionality(end_to_end_validation)
+      - measure_performance_impact(before_after_comparison)
+      
+    issue_closure:
+      - add_completion_comment(implementation_summary, validation_results)
+      - update_issue_labels(status:completed, resolved:success)
+      - close_issue_with_summary(changes_applied, performance_impact)
+      - merge_improvement_branch(after_validation_success)
+      
+  auto_actions:
+    - monitor_retrospective_issues(continuous_scanning)
+    - prioritize_by_medal_impact(critical_path_analysis)
+    - implement_approved_changes(automated_execution)
+    - validate_improvements(testing_and_verification)
+    - close_issues_with_detailed_summary(completion_tracking)
 ```
 
 ### 人間介入ポイント（完全最小化）
@@ -141,12 +220,7 @@ retrospective_agent:
 ## ディレクトリ構造
 
 ```
-kaggle-claude-mother/                 # マザーリポジトリ（コマンド・テンプレート管理）
-├── .claude/
-│   └── commands/                     # Claude Codeカスタムコマンド
-│       ├── find-comp.md              # コンペ検索・提案
-│       ├── start.md                  # リポジトリ作成＋初期分析
-│       └── update-insights.md        # Discussion更新チェック
+kaggle-claude-mother/                 # マザーリポジトリ（システム・テンプレート管理）
 ├── templates/                        # コンペ用テンプレート
 │   ├── notebooks/                    # 分析ノートブック雛形
 │   └── pyproject.toml.template       # uv設定テンプレート
@@ -224,6 +298,7 @@ uv run kaggle kernels push -p ./notebooks/submission.ipynb
   - **🏆 戦略的選択**: 「金メダル1個>銀メダル2個」原則による最適コンペ選択
   - **⚡ 自動撤退判断**: 中間順位分析→メダル圏外確定時の早期撤退決定
 - **Issue作成例**: "Strategic Selection: Medal Probability 0.73 - [Competition]"
+- **完了処理**: 完了コメント（戦略決定根拠・確率算出詳細・次ステップ指示）追加後にIssueクローズ
 
 #### 2. 深層分析エージェント (`agent:analyzer`) 【強化版】
 - **主要責務**: グランドマスター級技術調査・最新手法研究・競合分析
@@ -232,6 +307,7 @@ uv run kaggle kernels push -p ./notebooks/submission.ipynb
   - **📚 最新手法調査**: arXiv論文+Kaggle優勝解法の自動収集・実装可能性評価
   - **⚖️ 技術ベンチマーク**: 手法別性能比較・GPU最適化要件分析
 - **Issue作成例**: "Technical Deep Dive: XGBoost+cuML Stacking Analysis"
+- **完了処理**: 完了コメント（調査結果要約・実装推奨手法・技術的制約）追加後にIssueクローズ
 
 #### 3. 高度実行エージェント (`agent:executor`) 【強化版】  
 - **主要責務**: グランドマスター級技術実装・GPU最適化・高速イテレーション
@@ -240,6 +316,7 @@ uv run kaggle kernels push -p ./notebooks/submission.ipynb
   - **⚙️ Owen Zhang式FE**: 手動特徴量エンジニアリング+自動化のハイブリッド
   - **🚀 高速実験**: 複数モデルの同時並行訓練・リアルタイムスコア監視
 - **Issue更新**: 実験結果・CV/LBスコア・技術的課題をリアルタイム報告
+- **完了処理**: 完了コメント（最終スコア・ベストモデル・提出状況・残課題）追加後にIssueクローズ
 
 #### 4. 学習モニタリングエージェント (`agent:monitor`) 【強化版】
 - **主要責務**: 継続学習・失敗分析・戦略リアルタイム最適化
@@ -248,6 +325,7 @@ uv run kaggle kernels push -p ./notebooks/submission.ipynb
   - **📈 知識蓄積**: 成功・失敗パターンのデータベース化・次回転移
   - **🔄 動的最適化**: 中間結果に基づく戦略・手法のリアルタイム調整
 - **自動化機能**: 全エージェント監視・ボトルネック特定・改善指示
+- **完了処理**: 完了コメント（学習成果・知識更新・最適化結果・改善提案）追加後にIssueクローズ
 
 #### 5. 反省エージェント (`agent:retrospective`) 【新規】
 - **主要責務**: システム自己改善・マザーリポジトリ自動更新
@@ -284,50 +362,27 @@ graph TB
     F --> G[撤退プロセス<br/>graceful_withdrawal]
     G --> H[新コンペ参戦<br/>highest_available]
     
-    D --> D1[Competition A<br/>独立フロー継続]
-    D --> D2[Competition B<br/>独立フロー継続]  
-    D --> D3[Competition C<br/>独立フロー継続]
+    D --> I[各コンペ独立フロー<br/>最大3並行実行]
+    H --> I
     
-    H --> H1[New Competition<br/>独立フロー開始]
-    
-    subgraph "Active Competition Independent Flows"
-        D1 --> E1[planner→analyzer→executor→monitor_A]
-        D2 --> E2[planner→analyzer→executor→monitor_B]
-        D3 --> E3[planner→analyzer→executor→monitor_C]
-        H1 --> E4[planner→analyzer→executor→monitor_New]
-        
-        E1 --> I1{A: メダル圏判定<br/>定期評価}
-        E2 --> I2{B: メダル圏判定<br/>定期評価}
-        E3 --> I3{C: メダル圏判定<br/>定期評価}
-        E4 --> I4{New: メダル圏判定<br/>定期評価}
-        
-        I1 -->|圏外確定| J1[自動撤退A→反省]
-        I1 -->|圏内継続| K1[実験継続A]
-        I2 -->|圏外確定| J2[自動撤退B→反省]  
-        I2 -->|圏内継続| K2[実験継続B]
-        I3 -->|圏外確定| J3[自動撤退C→反省]
-        I3 -->|圏内継続| K3[実験継続C]
-        I4 -->|圏外確定| J4[自動撤退New→反省]
-        I4 -->|圏内継続| K4[実験継続New]
+    subgraph "Competition Independent Execution (Max 3 Parallel)"
+        I --> J[planner→analyzer→executor→monitor<br/>各コンペリポジトリ内cd実行]
+        J --> K{メダル圏判定<br/>定期評価}
+        K -->|圏外確定| L[自動撤退→反省]
+        K -->|圏内継続| M[実験継続]
     end
     
-    G --> L[competition-specific<br/>反省エージェント]
-    J1 --> L
-    J2 --> L  
-    J3 --> L
-    J4 --> L
-    K1 --> M[統合反省Agent<br/>横断学習]
-    K2 --> M
-    K3 --> M
-    K4 --> M
+    G --> N[competition-specific<br/>反省エージェント]
+    L --> N
+    M --> O[統合反省Agent<br/>横断学習]
     
-    L --> M
-    M --> N[マザーリポジトリ<br/>自動最適化更新]
-    N --> A
+    N --> O
+    O --> P[マザーリポジトリ<br/>自動最適化更新]
+    P --> A
     
     style E fill:#ff9999
     style G fill:#ff9999
-    style L fill:#ffcc99
+    style N fill:#ffcc99
 ```
 
 #### 📋 動的最適化実行フロー詳細
@@ -342,44 +397,6 @@ graph TB
 9. **統合反省・改善** → 全コンペ結果統合分析・マザーリポジトリ自動更新
 10. **完全自動サイクル** → 改善反映後、次の動的最適化・継続実行
 
-## カスタムコマンド詳細
-
-> **注意**: 
-> - `k_`で始まる単語（例：`k_init`、`k_start`等）は、このリポジトリ専用のカスタムスラッシュコマンドを指します。
-> - `k_init`作業中はweb検索は必要ありません。
-
-### `/find-comp`
-
-- アクティブなコンペを取得
-- メダル獲得可能性、参加者数、賞金を分析
-- おすすめ度をスコアリングして提示
-
-### `/start [competition-name]`
-
-- `competitions/[competition-name]/`ディレクトリ作成
-- テンプレートからの初期ファイル配置
-- データダウンロード
-- Discussion分析（上位投稿、有用な手法を抽出）
-- 初期EDA自動実行
-
-### `/update-insights`
-
-- 前回チェック以降の新規Discussionを分析
-- 各コンペの`insights/`ディレクトリに知見を追記
-- 重要な更新があれば通知
-
-## Discussion分析機能
-
-各コンペのDiscussionから以下を自動抽出：
-
-- 高評価の解法アプローチ
-- 有効な特徴量エンジニアリング
-- バグ情報・注意点
-
-キャッシュ戦略：
-
-- 初回実行時：全Discussion取得
-- 2回目以降：差分のみ取得（各コンペの`cache/discussions/last_check.json`）
 
 ## リポジトリ管理方針
 
