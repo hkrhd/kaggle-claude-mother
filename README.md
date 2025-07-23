@@ -105,6 +105,10 @@ uv run kaggle kernels push -p ./notebooks/submission.ipynb
 
 ## カスタムコマンド詳細
 
+> **注意**: 
+> - `k_`で始まる単語（例：`k_init`、`k_start`等）は、このリポジトリ専用のカスタムスラッシュコマンドを指します。
+> - `k_init`作業中はweb検索は必要ありません。
+
 ### `/find-comp`
 
 - アクティブなコンペを取得
