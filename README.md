@@ -213,29 +213,44 @@ self_improvement_agent:
     - close_issues_with_detailed_summary(completion_tracking)
 ```
 
-### 人間介入ポイント（完全最小化）
-- **システム起動**: 初回起動・認証設定のみ
-- **以降完全自動**: 戦略判断・撤退決定・システム改善まで全自動化
+### 人間介入ポイント（初回認証のみ）
+- **認証設定**: 初回のKaggle・GitHub API認証のみ
+- **以降完全自動**: システム起動から戦略判断・撤退決定・システム改善まで全自動化
 
-## ディレクトリ構造
+## 📁 シングルリポジトリ構造
 
+### ディレクトリ構造
 ```
-kaggle-claude-mother/                 # マザーリポジトリ（システム・テンプレート管理）
+kaggle-claude-mother/                 # 統合マザーリポジトリ
 ├── templates/                        # コンペ用テンプレート
 │   ├── notebooks/                    # 分析ノートブック雛形
 │   └── pyproject.toml.template       # uv設定テンプレート
-└── competitions/                     # 各コンペの作業ディレクトリ
-    ├── titanic/                      # 例：タイタニックコンペ
-    │   ├── pyproject.toml            # 個別のuv環境
-    │   ├── .venv/                    # コンペ専用仮想環境
-    │   ├── notebooks/
-    │   ├── data/
-    │   └── insights/
-    └── house-prices/                 # 例：住宅価格予測コンペ
-        ├── pyproject.toml
-        ├── .venv/
-        └── ...
+├── competitions/                     # 全コンペ統合管理
+│   ├── titanic/                      # コンペ別独立環境
+│   │   ├── pyproject.toml            # コンペ専用uv環境
+│   │   ├── .venv/                    # 独立仮想環境
+│   │   ├── notebooks/
+│   │   │   └── submission.ipynb     # 提出用統合ノートブック
+│   │   ├── data/                     # コンペ固有データ
+│   │   ├── models/                   # 訓練済みモデル・重み
+│   │   ├── experiments/              # 実験ログ・結果
+│   │   ├── insights/
+│   │   │   └── discussion_summary.md # 抽出知見
+│   │   └── cache/
+│   │       └── discussions/          # Discussion分析キャッシュ
+│   ├── house-prices/                 # 他コンペも同様構造
+│   └── nlp-disaster/
+└── system/                           # システム自動化スクリプト
+    ├── agents/                       # エージェント実行スクリプト
+    ├── automation/                   # 自動化処理
+    └── monitoring/                   # システム監視
 ```
+
+### データ・コード配置方針
+- **🎯 完全分離**: 各コンペのデータ・モデル・コード・実験結果は全て`competitions/[comp-name]/`内に配置
+- **🔒 環境独立**: コンペごとに独立したuv仮想環境（`.venv/`）で依存関係を完全分離
+- **📊 全体把握**: 単一リポジトリ内でのIssue管理により、全コンペの進捗・状況を一元監視
+- **⚡ リソース効率**: GitHubリポジトリ乱立防止、統合的なCI/CD・自動化システム構築
 
 ## 🚀 完全自動化セットアップ
 
@@ -243,17 +258,13 @@ kaggle-claude-mother/                 # マザーリポジトリ（システム�
 
 ### 一回限りの初期設定
 ```bash
-# 1. マザーリポジトリのクローン
-ghq get your-username/kaggle-claude-mother
-cd $(ghq root)/github.com/your-username/kaggle-claude-mother
-
-# 2. 認証設定（一回のみ）
+# 1. 認証設定（一回のみ）
 mkdir -p ~/.kaggle
 cp kaggle.json ~/.kaggle/  # Kaggle API認証
 chmod 600 ~/.kaggle/kaggle.json
 gh auth login  # GitHub API認証（Issue操作用）
 
-# 3. 自動化システム起動
+# 2. 自動化システム起動
 ./start_autonomous_system.sh  # 完全自動化開始
 ```
 
@@ -285,141 +296,187 @@ uv run kaggle kernels push -p ./notebooks/submission.ipynb
 
 再利用可能なコードブロックは`templates/`ディレクトリに配置され、新しいコンペ作成時に各コンペディレクトリにコピーされます。
 
-## エージェント間連携システム（GitHub Issue API）
+## 🤖 エージェント間連携システム
 
-ファイルベースではなく**GitHub Issueベース**でエージェント間のやり取りを行います：
+シングルリポジトリ内での**GitHub Issue API**による安全な自動連携システム。各コンペを完全独立実行しながら、統合的な進捗管理を実現します。
 
-### 統合エージェント構成（メダル獲得最優先強化版）
+### 5エージェント構成と役割
 
-#### 1. 戦略プランニングエージェント (`agent:planner`) 【強化版】
-- **主要責務**: 戦略的コンペ選択・全体戦略策定・自動撤退判断
-- **自動実行内容**:
-  - **🎯 メダル獲得確率算出**: 参加者数×賞金×専門性マッチング→定量スコア
-  - **🏆 戦略的選択**: 「金メダル1個>銀メダル2個」原則による最適コンペ選択
-  - **⚡ 自動撤退判断**: 中間順位分析→メダル圏外確定時の早期撤退決定
-- **Issue作成例**: "Strategic Selection: Medal Probability 0.73 - [Competition]"
-- **完了処理**: 完了コメント（戦略決定根拠・確率算出詳細・次ステップ指示）追加後にIssueクローズ
+#### 1. 戦略プランニングエージェント (`agent:planner`)
+**🎯 メダル確率算出・戦略的コンペ選択・撤退判断**
+- メダル獲得確率の定量算出（参加者数×賞金×専門性マッチング）
+- 「金メダル1個>銀メダル2個」原則による最適コンペ選択
+- 中間順位分析による自動撤退判断（メダル圏外確定時）
 
-#### 2. 深層分析エージェント (`agent:analyzer`) 【強化版】
-- **主要責務**: グランドマスター級技術調査・最新手法研究・競合分析
-- **自動実行内容**:
-  - **🔬 上位解法深掘り**: Owen Zhang/Abhishek Thakur級解法の技術分析・再現
-  - **📚 最新手法調査**: arXiv論文+Kaggle優勝解法の自動収集・実装可能性評価
-  - **⚖️ 技術ベンチマーク**: 手法別性能比較・GPU最適化要件分析
-- **Issue作成例**: "Technical Deep Dive: XGBoost+cuML Stacking Analysis"
-- **完了処理**: 完了コメント（調査結果要約・実装推奨手法・技術的制約）追加後にIssueクローズ
+#### 2. 深層分析エージェント (`agent:analyzer`)
+**🔬 グランドマスター級技術調査・最新手法研究**
+- Owen Zhang/Abhishek Thakur級解法の技術分析・再現性評価
+- arXiv論文+Kaggle優勝解法の自動収集・実装可能性判定
+- 手法別性能ベンチマーク・GPU最適化要件分析
 
-#### 3. 高度実行エージェント (`agent:executor`) 【強化版】  
-- **主要責務**: グランドマスター級技術実装・GPU最適化・高速イテレーション
-- **自動実行内容**:
-  - **🏗️ cuML/GPU最適化**: 大規模アンサンブル・スタッキングの並列実行
-  - **⚙️ Owen Zhang式FE**: 手動特徴量エンジニアリング+自動化のハイブリッド
-  - **🚀 高速実験**: 複数モデルの同時並行訓練・リアルタイムスコア監視
-- **Issue更新**: 実験結果・CV/LBスコア・技術的課題をリアルタイム報告
-- **完了処理**: 完了コメント（最終スコア・ベストモデル・提出状況・残課題）追加後にIssueクローズ
+#### 3. 高度実行エージェント (`agent:executor`)
+**🏗️ GPU最適化実装・高速実験・並列実行**
+- cuML/GPU大規模アンサンブル・スタッキングの並列実行
+- Owen Zhang式手動特徴量エンジニアリング+自動化ハイブリッド
+- 複数モデル同時並行訓練・リアルタイムスコア監視
 
-#### 4. 学習モニタリングエージェント (`agent:monitor`) 【強化版】
-- **主要責務**: 継続学習・失敗分析・戦略リアルタイム最適化
-- **自動実行内容**:
-  - **🧠 失敗学習**: 実験失敗・スコア低下の要因構造化分析
-  - **📈 知識蓄積**: 成功・失敗パターンのデータベース化・次回転移
-  - **🔄 動的最適化**: 中間結果に基づく戦略・手法のリアルタイム調整
-- **自動化機能**: 全エージェント監視・ボトルネック特定・改善指示
-- **完了処理**: 完了コメント（学習成果・知識更新・最適化結果・改善提案）追加後にIssueクローズ
+#### 4. 学習モニタリングエージェント (`agent:monitor`)
+**🧠 継続学習・失敗分析・動的最適化**
+- 実験失敗・スコア低下の要因構造化分析
+- 成功・失敗パターンのデータベース化・コンペ横断転移学習
+- 中間結果に基づく戦略・手法のリアルタイム調整
 
-#### 5. 反省エージェント (`agent:retrospective`) 【新規】
-- **主要責務**: システム自己改善・マザーリポジトリ自動更新
-- **自動実行内容**:
-  - **🔧 システム改善**: エージェント連携・コード・戦略アルゴリズムの最適化
-  - **📊 効果分析**: 確率算出モデル・技術選択・タイミング判断の精度向上
-  - **⚡ 自動コード更新**: templates/・commands/・連携ロジックの改良実装
-- **成果物**: 改善されたマザーリポジトリ・次世代エージェント・最適化戦略
+#### 5. 反省エージェント (`agent:retrospective`)
+**🔧 システム自己改善・マザーリポジトリ自動更新**
+- エージェント連携・コード・戦略アルゴリズムの最適化
+- 確率算出モデル・技術選択・タイミング判断の精度向上
+- templates/・system/・連携ロジックの改良実装
 
-### ラベル体系（強化版）
-- `agent:planner` - 戦略プランニングエージェント
-- `agent:analyzer` - 深層分析エージェント  
-- `agent:executor` - 高度実行エージェント
-- `agent:monitor` - 学習モニタリングエージェント
-- `agent:retrospective` - 反省エージェント（新規）
-- `status:auto-processing` - 自動処理中
-- `status:completed` - 完了
-- `priority:medal-critical` - メダル獲得に直結
-- `medal-probability:high/medium/low` - メダル確率評価
+### Issue安全連携システム（コンペ取り違い防止）
+
+#### 厳密なラベルシステム
+```yaml
+# 必須ラベル組み合わせ（全Issue一意識別）
+issue_identification:
+  agent_type: ["agent:planner", "agent:analyzer", "agent:executor", "agent:monitor", "agent:retrospective"]
+  competition: ["comp:titanic", "comp:house-prices", "comp:nlp-disaster"]  # コンペ名で識別
+  status: ["status:auto-processing", "status:waiting", "status:completed"]
+  priority: ["priority:medal-critical", "priority:optimization", "medal-probability:high/medium/low"]
+
+# Issue作成フォーマット
+issue_format:
+  title: "[{comp-name}] {agent}: {task_description}"
+  example: "[titanic] planner: Medal Probability Analysis - 1247 participants"
+  required_labels: ["agent:{type}", "comp:{name}", "status:auto-processing", "priority:{level}"]
+```
+
+#### 安全な自動連携フロー
+```yaml
+# エージェント反応条件（厳密フィルタリング）
+agent_triggers:
+  planner: "comp:{target} AND agent:system"
+  analyzer: "comp:{target} AND agent:planner AND status:completed"
+  executor: "comp:{target} AND agent:analyzer AND status:completed"  
+  monitor: "comp:{target} AND agent:executor"
+  retrospective: "comp:{target} AND (status:completed OR status:error)"
+
+# 実行環境分離
+execution_isolation:
+  working_directory: "cd competitions/{comp-name}/"
+  environment: "source competitions/{comp-name}/.venv/bin/activate"
+  issue_filter: "必須：comp:{target}ラベルでの厳密な絞り込み"
+```
 
 ### 完全自動連携フロー（各コンペ独立実行）
 
-#### 🔄 動的コンペ管理・最適化アーキテクチャ
+#### 🔄 システム全体アーキテクチャ（シングルリポジトリ + Issue安全連携）
 
 ```mermaid
 graph TB
-    A[週2回動的スキャン<br/>tuesday_7am & friday_7am] --> B{全コンペ確率再計算<br/>既存 vs 新規比較}
-    B --> C{現在参加中<br/>3コンペ vs 新発見}
-    
-    C -->|最適維持| D[現状維持<br/>継続実行]
-    C -->|より良い機会| E[動的入れ替え<br/>プロセス開始]
-    
-    E --> F[下位コンペ特定<br/>lowest_probability]
-    F --> G[撤退プロセス<br/>graceful_withdrawal]
-    G --> H[新コンペ参戦<br/>highest_available]
-    
-    D --> I[各コンペ独立フロー<br/>最大3並行実行]
-    H --> I
-    
-    subgraph "Competition Independent Execution (Max 3 Parallel)"
-        I --> J[planner→analyzer→executor→monitor<br/>各コンペリポジトリ内cd実行]
-        J --> K{メダル圏判定<br/>定期評価}
-        K -->|圏外確定| L[自動撤退→反省]
-        K -->|圏内継続| M[実験継続]
+    %% 動的管理層
+    subgraph "🎯 Dynamic Competition Management"
+        A[週2回スキャン<br/>火・金 7:00] --> B{確率再評価}
+        B --> C{最適3コンペ維持}
+        C -->|入れ替え| D[撤退→新参戦]
+        C -->|維持| E[継続実行]
     end
     
-    G --> N[competition-specific<br/>反省エージェント]
-    L --> N
-    M --> O[統合反省Agent<br/>横断学習]
+    %% Issue安全システム
+    subgraph "🔒 Issue Safety System"
+        F[GitHub Issue API<br/>統合連携ハブ]
+        G[厳密ラベリング<br/>comp:名前 + agent:種別]
+        H[環境分離<br/>cd competitions/comp/]
+    end
     
-    N --> O
-    O --> P[マザーリポジトリ<br/>自動最適化更新]
-    P --> A
+    %% 各コンペ独立実行（最大3並行）
+    subgraph "🏁 Competition A (competitions/comp-a/)"
+        I1[comp:comp-a<br/>🎯 Planner] --> J1[comp:comp-a<br/>🔬 Analyzer]
+        J1 --> K1[comp:comp-a<br/>🏗️ Executor]
+        K1 --> L1[comp:comp-a<br/>🧠 Monitor]
+    end
     
-    style E fill:#ff9999
-    style G fill:#ff9999
-    style N fill:#ffcc99
+    subgraph "🏁 Competition B (competitions/comp-b/)"
+        I2[comp:comp-b<br/>🎯 Planner] --> J2[comp:comp-b<br/>🔬 Analyzer]
+        J2 --> K2[comp:comp-b<br/>🏗️ Executor] 
+        K2 --> L2[comp:comp-b<br/>🧠 Monitor]
+    end
+    
+    subgraph "🏁 Competition C (competitions/comp-c/)"
+        I3[comp:comp-c<br/>🎯 Planner] --> J3[comp:comp-c<br/>🔬 Analyzer]
+        J3 --> K3[comp:comp-c<br/>🏗️ Executor]
+        K3 --> L3[comp:comp-c<br/>🧠 Monitor]
+    end
+    
+    %% 統合学習・改善
+    subgraph "🔧 System Self-Improvement"
+        M[🔧 Retrospective Agent<br/>横断分析・改善提案]
+        N[マザーリポジトリ<br/>自動更新・最適化]
+    end
+    
+    %% フロー接続
+    D --> F
+    E --> F
+    F --> I1 & I2 & I3
+    
+    L1 --> M
+    L2 --> M  
+    L3 --> M
+    
+    M --> N
+    N --> A
+    
+    %% Issue安全システム接続
+    F -.-> G
+    G -.-> H
+    H -.-> I1 & I2 & I3
+    
+    %% スタイリング
+    classDef mgmt fill:#e1f5fe
+    classDef safety fill:#fff3e0  
+    classDef compA fill:#f3e5f5
+    classDef compB fill:#e8f5e8
+    classDef compC fill:#fff8e1
+    classDef improve fill:#fce4ec
+    
+    class A,B,C,D,E mgmt
+    class F,G,H safety
+    class I1,J1,K1,L1 compA
+    class I2,J2,K2,L2 compB
+    class I3,J3,K3,L3 compC
+    class M,N improve
 ```
 
-#### 📋 動的最適化実行フロー詳細
-1. **週2回動的スキャン** → 全コンペ確率再計算・既存参加コンペとの比較評価
-2. **動的入れ替え判断** → より高確率コンペ発見時の自動入れ替えプロセス起動
-3. **戦略プランニング** → 各コンペ独立の確率算出・戦略Issue作成
-4. **深層分析** → コンペ特化グランドマスター解法調査・技術実装判断
-5. **高度実行** → 専用GPU環境・コンペ特化実験・独立スコア報告
-6. **学習モニタリング** → コンペ個別失敗分析・横断知識蓄積・独立最適化
-7. **自動撤退判断** → メダル圏外確定 or より良い機会発見時の即座撤退
-8. **動的リソース最適化** → 撤退コンペのリソース解放・新コンペへの再配分
-9. **統合反省・改善** → 全コンペ結果統合分析・マザーリポジトリ自動更新
-10. **完全自動サイクル** → 改善反映後、次の動的最適化・継続実行
+#### 📋 コンペ別実行ステップ
+```yaml
+# 各コンペで独立並行実行される自動フロー
+execution_flow:
+  1_system_scan:
+    trigger: "週2回（火・金 7:00）"
+    action: "全コンペ確率算出→最適3コンペ選択→動的入れ替え判断"
+    
+  2_planner:
+    issue: "[{comp}] planner: Medal Strategy Analysis"
+    context: "cd competitions/{comp}/"
+    action: "コンペ別戦略策定・確率算出→analyzer起動"
+    
+  3_analyzer: 
+    issue: "[{comp}] analyzer: Technical Research"  
+    context: "cd competitions/{comp}/"
+    action: "グランドマスター解法調査・実装判断→executor起動"
+    
+  4_executor:
+    issue: "[{comp}] executor: GPU Implementation"
+    context: "cd competitions/{comp}/ && source .venv/bin/activate"
+    action: "cuML実装・並列実験・スコア監視→monitor起動"
+    
+  5_monitor:
+    issue: "[{comp}] monitor: Performance Tracking"
+    context: "cd competitions/{comp}/"
+    action: "継続監視・失敗学習・動的最適化→retrospective起動"
 
-
-## リポジトリ管理方針
-
-**マルチリポジトリ管理**: 各コンペは独立したGitリポジトリとして管理されます。マザーリポジトリとは別の個別リポジトリです。
-
-各コンペは`competitions/`ディレクトリ以下で管理され、以下の構造に従います：
-
+# 安全性保証メカニズム
+safety_guarantees:
+  issue_isolation: "comp:{target}ラベルでの厳密コンペ識別"
+  environment_isolation: "competitions/{comp}/での独立uv環境"
+  cross_competition_prevention: "他コンペIssueへの誤反応完全防止"
 ```
-competitions/[competition-name]/
-├── pyproject.toml           # uv設定（コンペ専用依存関係）
-├── .venv/                   # 仮想環境（個別管理）
-├── notebooks/
-│   └── submission.ipynb     # 提出用の単一ノートブック
-├── data/                    # ダウンロードしたデータセット
-├── insights/
-│   └── discussion_summary.md # 抽出された知見
-└── cache/
-    └── discussions/         # Discussion分析キャッシュ
-```
-
-**管理方針:**
-- 各コンペは`competitions/`以下で独立したGitリポジトリとして管理
-- コンペごとに独立したuv環境を構築
-- マザーリポジトリ、各コンペリポジトリは完全に分離
-- **重要**: マザーリポジトリ直下にはコンペデータやモデルファイルは置かない
-- テンプレートとカスタムコマンドのみをマザーで管理
