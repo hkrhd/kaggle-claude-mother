@@ -14,9 +14,24 @@
 ## 🤖 自動化メダル獲得システム
 
 ### 自動実行アーキテクチャ概要
-システムは**人間介入を最小化**し、自律的にメダル獲得に向けて動作します。実装手段（shell/Python/GitHub Actions等）は要検討、設計思想が核心です。
+システムは**人間介入を最小化**し、自律的にメダル獲得に向けて動作します。全エージェントは**Linuxローカル環境**で実行され、GitHub Issue APIを通じて連携します。
 
 ### Stage 1: 動的コンペ管理・最適化参戦（最大3コンペ同時進行）
+
+#### リソース等分配分システム
+```yaml
+# ユーザー利用時間制限の3等分配分
+time_allocation_per_competition:
+  kaggle_kernels: 30h/week ÷ 3 = 10h/week per competition
+  google_colab: 12h/day ÷ 3 = 4h/day per competition  
+  paperspace: 6h/month ÷ 3 = 2h/month per competition
+  
+# 時間配分の自動管理
+automatic_time_management:
+  - real_time_usage_tracking_per_competition()
+  - automatic_cutoff_when_quota_exceeded()
+  - priority_reallocation_from_low_probability_competitions()
+```
 ```yaml
 # 週2回の動的最適化実行
 dynamic_competition_manager:
@@ -211,6 +226,31 @@ self_improvement_agent:
     - implement_approved_changes(automated_execution)
     - validate_improvements(testing_and_verification)
     - close_issues_with_detailed_summary(completion_tracking)
+
+# システム障害時自動復旧システム
+failure_recovery_system:
+  detection:
+    - agent_heartbeat_monitoring(30分間隔)
+    - issue_update_timeout_detection(2時間無更新)
+    - cloud_execution_failure_detection(API監視)
+    
+  recovery_strategy:
+    - 各コンペの独立エージェントサイクル再起動のみ
+    - 障害コンペの現在進行ステップから継続実行
+    - 他コンペへの影響完全遮断（独立性保証）
+    
+  restart_mechanism:
+    recovery_target: "comp:{failed_competition}の進行中エージェント"
+    restart_process:
+      - identify_last_completed_stage(planner/analyzer/executor/monitor)
+      - create_recovery_issue("[{comp}] RECOVERY: Restart from {last_stage}")
+      - trigger_next_agent_in_sequence()
+      - preserve_previous_experiment_results()
+    
+    failure_isolation:
+      - 失敗コンペ以外は継続実行（無影響）
+      - 全体システム再起動は不要
+      - Issue安全システムにより競合回避保証
 ```
 
 ### 人間介入ポイント（初回認証のみ）
@@ -254,7 +294,7 @@ kaggle-claude-mother/                 # 統合マザーリポジトリ
 
 ## 🚀 完全自動化セットアップ
 
-**人間の作業は初回認証のみ** - 以降は全自動でメダル獲得まで動作します。
+**人間の作業は初回認証のみ** - 以降は全自動でメダル獲得まで動作します。システム全体はLinuxローカル環境で実行され、軽量エージェント連携により効率的に動作します。
 
 ### 一回限りの初期設定
 ```bash
@@ -315,10 +355,48 @@ uv run kaggle kernels push -p ./notebooks/submission.ipynb
 - 手法別性能ベンチマーク・GPU最適化要件分析
 
 #### 3. 高度実行エージェント (`agent:executor`)
-**🏗️ GPU最適化実装・高速実験・並列実行**
-- cuML/GPU大規模アンサンブル・スタッキングの並列実行
-- Owen Zhang式手動特徴量エンジニアリング+自動化ハイブリッド
-- 複数モデル同時並行訓練・リアルタイムスコア監視
+**🏗️ クラウド実行・無料リソース最大活用・自動実験**
+
+##### ローカル・クラウド役割分担
+```yaml
+# ローカル（軽量処理のみ）
+local_role:
+  - データ分析・EDA・前処理設計
+  - コード生成・テンプレート作成
+  - 実験計画・パラメータ設定
+  - 結果収集・統合・提出判断
+
+# クラウド実行（主力）
+cloud_execution:
+  kaggle_kernels:
+    - API経由notebook自動作成・実行（30h/week GPU）
+    - 複数kernel並列実行でパラメータ探索
+    
+  google_colab:
+    - Claude Code → Colab notebook自動生成・実行
+    - Drive API経由結果自動回収
+    - 複数アカウント輪番利用
+    
+  paperspace_gradient:
+    - 最終モデル訓練用（6h/month free tier）
+
+# Claude Code連携方法【要検討】
+automation_integration:
+  kaggle_api:
+    - kaggle kernels push -p {generated_notebook}
+    - kaggle kernels status {kernel_id} で進捗監視
+    - kaggle kernels output {kernel_id} で結果取得
+    
+  colab_integration:
+    - Google Drive APIでnotebook配置
+    - Colab API（非公式）での実行トリガー
+    - 結果ファイルのDrive経由自動回収
+    
+  monitoring_system:
+    - クラウド実行状況の統合監視
+    - 異常時の自動リトライ・エスケレーション
+    - コスト・利用時間の最適配分
+```
 
 #### 4. 学習モニタリングエージェント (`agent:monitor`)
 **🧠 継続学習・失敗分析・動的最適化**
@@ -333,6 +411,41 @@ uv run kaggle kernels push -p ./notebooks/submission.ipynb
 - templates/・system/・連携ロジックの改良実装
 
 ### Issue安全連携システム（コンペ取り違い防止）
+
+#### 競合状態・デッドロック対策
+```yaml
+# 原子性保証メカニズム
+atomic_operations:
+  issue_creation:
+    - check_duplicate_issue(comp, agent_type)  # 重複チェック
+    - create_with_unique_suffix_if_exists()    # 重複時自動リネーム
+    - add_labels_atomically([comp, agent, status])
+    
+  issue_update:
+    - fetch_current_etag()                     # 楽観的ロック
+    - update_with_etag_check()                 # 競合検出時リトライ
+    - exponential_backoff(max_attempts: 5)     # 1s, 2s, 4s, 8s, 16s
+    
+# デッドロック回避策
+deadlock_prevention:
+  agent_execution_order:
+    - enforce_strict_sequence: planner → analyzer → executor → monitor
+    - no_reverse_dependencies: 後段エージェントは前段にIssue作成禁止
+    - timeout_per_stage: 各エージェント最大実行時間30分
+    
+  circular_dependency_detection:
+    - track_agent_wait_chain(comp, agent_sequence)
+    - detect_cycle_formation()
+    - auto_break_oldest_wait() # 最も古い待機を強制終了
+    
+# 重複実行防止
+execution_lock:
+  per_competition_per_agent:
+    - create_lock_issue: "[{comp}] LOCK: {agent} - Processing"
+    - check_existing_lock_before_start()
+    - auto_release_on_completion_or_timeout(30min)
+    - force_unlock_command: manual recovery option
+```
 
 #### 厳密なラベルシステム
 ```yaml
@@ -480,3 +593,70 @@ safety_guarantees:
   environment_isolation: "competitions/{comp}/での独立uv環境"
   cross_competition_prevention: "他コンペIssueへの誤反応完全防止"
 ```
+
+## 📋 エージェント実装計画書
+
+システム構築のための詳細実装計画書：
+
+### 🤖 エージェント実装計画
+- [戦略プランニングエージェント](plan_planner.md) - メダル確率算出・戦略的コンペ選択・撤退判断
+- [深層分析エージェント](plan_analyzer.md) - グランドマスター級技術調査・最新手法研究・実装可能性判定
+- [高度実行エージェント](plan_executor.md) - クラウド実行・無料リソース最大活用・自動実験
+- [学習モニタリングエージェント](plan_monitor.md) - 継続学習・失敗分析・動的最適化
+- [反省エージェント](plan_retrospective.md) - システム自己改善・マザーリポジトリ自動更新
+
+### 🏗️ システム基盤実装計画
+- [動的コンペ管理システム](plan_dynamic_competition_manager.md) - 週2回最適化・3コンペ並行管理・自動入れ替え
+- [Issue安全連携システム](plan_issue_safety_system.md) - 原子性操作・競合回避・デッドロック防止・完全分離保証
+
+## 🎯 実装戦略・システム最適化
+
+### Claude Code実装アプローチ
+**テスト駆動開発 (TDD)** による段階的実装で複雑性を管理：
+
+```yaml
+implementation_strategy:
+  phase1_test_definition: "全機能テストケース完全定義"
+  phase2_minimal_implementation: "最小実装でテスト通過"
+  phase3_feature_expansion: "テスト保持しながら機能拡張"
+  
+success_criteria:
+  - medal_probability_accuracy: ">80% vs actual winners"
+  - system_automation_rate: ">95% human-intervention-free" 
+  - resource_cost_efficiency: "free-tier-only operation"
+```
+
+### 高精度メダル確率算出システム
+実際のメダリストデータ分析による精度向上：
+
+```python
+# 実証ベース確率モデル
+enhanced_probability = (
+    base_probability * 0.4 +              # 基本確率
+    medalist_behavior_match * 0.3 +       # 成功パターン類似度
+    technique_trend_alignment * 0.2 +     # 最新トレンド適合性
+    (1 - competitor_quality) * 0.1        # 競合強度逆相関
+)
+```
+
+### コスト効率最適化システム
+無料リソース最大活用による完全無料運用：
+
+```yaml
+resource_optimization:
+  free_tier_maximization:
+    - kaggle_kernels: "30h/week GPU完全活用"
+    - google_colab: "複数アカウント輪番利用"
+    - paperspace: "6h/month効率配分"
+    
+  early_withdrawal_enhancement:
+    - roi_threshold: "代替機会80%を下回ったら撤退"
+    - opportunity_cost_calculation: "動的コスト効率評価"
+    - resource_reallocation: "低確率コンペからの即座転換"
+```
+
+### 実装成功予想
+- **基本メダル獲得確率**: 70-80%
+- **最適化後確率**: 80-85%
+- **完全自動化率**: 95%+
+- **運用コスト**: $0 (無料枠のみ)

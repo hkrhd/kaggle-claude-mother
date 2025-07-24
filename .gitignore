@@ -56,7 +56,6 @@ models/
 logs/
 
 # Kaggle specific
-kaggle.json
 .kaggle/
 
 # Machine Learning
