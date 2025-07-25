@@ -27,39 +27,7 @@ from ..agents.monitor.monitor_agent import MonitorAgent
 from ..agents.retrospective.retrospective_agent import RetrospectiveAgent
 
 # 動的競技管理システム
-try:
-    from ..dynamic_competition_manager import DynamicScheduler, MedalProbabilityCalculator
-    # DynamicCompetitionManagerクラスのモック実装（テスト環境用）
-    class DynamicCompetitionManager:
-        def __init__(self, github_token: str, repo_name: str):
-            self.github_token = github_token
-            self.repo_name = repo_name
-            self.scheduler = DynamicScheduler()
-            self.medal_calculator = MedalProbabilityCalculator()
-        
-        async def get_active_competitions(self):
-            return []
-        
-        async def analyze_portfolio(self):
-            return {"active_competitions": [], "recommendations": []}
-        
-        async def update_competition_status(self, competition_id: str, status: str):
-            return True
-except ImportError:
-    # フォールバック用の完全モック実装
-    class DynamicCompetitionManager:
-        def __init__(self, github_token: str, repo_name: str):
-            self.github_token = github_token
-            self.repo_name = repo_name
-        
-        async def get_active_competitions(self):
-            return []
-        
-        async def analyze_portfolio(self):
-            return {"active_competitions": [], "recommendations": []}
-        
-        async def update_competition_status(self, competition_id: str, status: str):
-            return True
+from ..dynamic_competition_manager import DynamicCompetitionManager
 
 
 class SystemPhase(Enum):

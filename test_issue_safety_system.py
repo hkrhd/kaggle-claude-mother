@@ -8,6 +8,7 @@ Phase 1完了確認のための基本機能テスト
 import asyncio
 import sys
 import traceback
+import pytest
 from datetime import datetime
 from typing import Dict, Any
 
@@ -272,6 +273,7 @@ def test_basic_functionality():
     return passed_tests == total_tests
 
 
+@pytest.mark.asyncio
 async def test_async_functionality():
     """非同期機能テスト"""
     print("\n=== 非同期機能テスト ===")

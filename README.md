@@ -304,8 +304,325 @@ cp kaggle.json ~/.kaggle/  # Kaggle API認証
 chmod 600 ~/.kaggle/kaggle.json
 gh auth login  # GitHub API認証（Issue操作用）
 
-# 2. 自動化システム起動
-./start_autonomous_system.sh  # 完全自動化開始
+# 2. システム依存関係インストール
+uv sync  # Python依存関係インストール
+```
+
+### システム実行方法（推奨順）
+
+#### 🏆 最推奨: systemd service化（本格運用向け）
+**24/7完全自動運用・自動再起動・ログ管理**
+```bash
+# 1. service設定ファイル作成
+sudo tee /etc/systemd/system/kaggle-claude-mother.service > /dev/null <<EOF
+[Unit]
+Description=Kaggle Claude Mother - Autonomous Competition System
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$(pwd)
+Environment=PATH=$(echo $PATH)
+ExecStart=$(which uv) run python main.py --mode autonomous
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kaggle-claude-mother
+
+# プロセス制限
+LimitNOFILE=65536
+MemoryMax=4G
+CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 2. service有効化・開始
+sudo systemctl daemon-reload
+sudo systemctl enable kaggle-claude-mother
+sudo systemctl start kaggle-claude-mother
+
+# 3. 状態確認・ログ監視
+sudo systemctl status kaggle-claude-mother
+journalctl -u kaggle-claude-mother -f  # リアルタイムログ
+```
+
+#### 🥈 代替: nohup バックグラウンド実行
+**ターミナル切断後も継続実行**
+```bash
+# バックグラウンド実行
+nohup uv run python main.py --mode autonomous > logs/system.log 2>&1 &
+
+# プロセス確認・停止
+ps aux | grep "python main.py"
+kill <PID>  # 停止時
+
+# ログ監視
+tail -f logs/system.log
+```
+
+### 実行モード選択ガイド
+
+#### 単発実行（テスト・個別競技）
+```bash
+# 特定競技の単発実行
+uv run python main.py --mode single --competition "Titanic"
+
+# システム状態確認
+uv run python main.py --mode status
+```
+
+#### 自律実行（メイン運用）
+```bash
+# 完全自動化モード（24/7運用）
+uv run python main.py --mode autonomous
+```
+
+## 🔧 運用・監視・保守
+
+### システム監視・ヘルスチェック
+
+#### リアルタイム監視
+```bash
+# システム状態確認
+sudo systemctl status kaggle-claude-mother
+uv run python main.py --mode status
+
+# リソース使用状況監視
+htop  # CPU・メモリ使用率
+df -h  # ディスク使用量
+free -h  # メモリ使用量
+
+# GitHub API制限確認
+gh api rate_limit
+```
+
+#### 自動監視スクリプト
+```bash
+# 監視スクリプト作成
+cat > monitor_system.sh << 'EOF'
+#!/bin/bash
+# 5分間隔でシステム監視
+
+while true; do
+    echo "=== $(date) ==="
+    
+    # プロセス生存確認
+    if ! pgrep -f "python main.py" > /dev/null; then
+        echo "⚠️ システムプロセス停止検出"
+        sudo systemctl restart kaggle-claude-mother
+    fi
+    
+    # ディスク容量警告（80%以上）
+    DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+    if [ $DISK_USAGE -gt 80 ]; then
+        echo "⚠️ ディスク使用量: ${DISK_USAGE}%"
+    fi
+    
+    # メモリ使用量警告（90%以上）
+    MEM_USAGE=$(free | awk 'NR==2 {printf "%.0f", $3/$2*100}')
+    if [ $MEM_USAGE -gt 90 ]; then
+        echo "⚠️ メモリ使用量: ${MEM_USAGE}%"
+    fi
+    
+    sleep 300  # 5分待機
+done
+EOF
+
+chmod +x monitor_system.sh
+nohup ./monitor_system.sh > logs/monitor.log 2>&1 &
+```
+
+### ログ管理・ローテーション
+
+#### ログ監視
+```bash
+# システムログ監視
+journalctl -u kaggle-claude-mother -f
+
+# アプリケーションログ監視  
+tail -f logs/system.log
+
+# エラーログ抽出
+grep -i error logs/system.log | tail -20
+grep -i "failed\|exception" logs/system.log
+```
+
+#### ログローテーション設定
+```bash
+# logrotateルール作成
+sudo tee /etc/logrotate.d/kaggle-claude-mother > /dev/null << EOF
+/home/$USER/ws/github.com/hkrhd/kaggle-claude-mother/logs/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 644 $USER $USER
+    postrotate
+        sudo systemctl reload kaggle-claude-mother
+    endscript
+}
+EOF
+
+# ローテーション手動実行テスト
+sudo logrotate -f /etc/logrotate.d/kaggle-claude-mother
+```
+
+### 障害対応・自動復旧
+
+#### 緊急停止・再起動
+```bash
+# 緊急停止
+sudo systemctl stop kaggle-claude-mother
+pkill -f "python main.py"
+
+# 安全な再起動
+sudo systemctl restart kaggle-claude-mother
+
+# 設定リロード
+sudo systemctl daemon-reload
+sudo systemctl reload kaggle-claude-mother
+```
+
+#### 障害診断
+```bash
+# サービス状態詳細確認
+systemctl show kaggle-claude-mother --no-pager
+
+# 最近のエラーログ確認
+journalctl -u kaggle-claude-mother --since "1 hour ago" -p err
+
+# GitHub API接続テスト
+gh api user  # 認証確認
+gh api repos/$USER/kaggle-claude-mother/issues  # リポジトリアクセス確認
+```
+
+### 定期メンテナンス
+
+#### 週次メンテナンス
+```bash
+# 週次メンテナンススクリプト
+cat > weekly_maintenance.sh << 'EOF'
+#!/bin/bash
+echo "=== 週次メンテナンス $(date) ==="
+
+# 1. ログクリーンアップ
+find logs/ -name "*.log" -mtime +7 -delete
+find logs/archive/ -name "*.gz" -mtime +30 -delete
+
+# 2. 一時ファイルクリーンアップ  
+find competitions/*/cache/ -mtime +3 -delete
+find /tmp -name "*kaggle*" -mtime +1 -delete
+
+# 3. 依存関係更新確認
+uv sync --upgrade
+
+# 4. システム状態レポート
+echo "システム稼働時間: $(uptime)"
+echo "ディスク使用量: $(df -h / | awk 'NR==2 {print $5}')"
+echo "処理済み競技数: $(uv run python main.py --mode status | grep '処理済み')"
+
+# 5. GitHub API制限状況
+gh api rate_limit --jq '.rate | "API残り: \(.remaining)/\(.limit)"'
+
+echo "=== メンテナンス完了 ==="
+EOF
+
+chmod +x weekly_maintenance.sh
+
+# cron設定（毎週日曜 3:00実行）
+echo "0 3 * * 0 cd $(pwd) && ./weekly_maintenance.sh >> logs/maintenance.log 2>&1" | crontab -
+```
+
+#### セキュリティ更新
+```bash
+# システムパッケージ更新
+sudo apt update && sudo apt upgrade -y
+
+# Python依存関係セキュリティチェック
+uv run pip-audit
+
+# GitHub トークン更新（定期）
+gh auth refresh
+```
+
+### パフォーマンス最適化
+
+#### リソース使用量分析
+```bash
+# プロセス詳細分析
+ps aux --sort=-%cpu | head -10  # CPU使用率上位
+ps aux --sort=-%mem | head -10  # メモリ使用率上位
+
+# I/O統計
+iotop -ao  # ディスクI/O監視
+iostat -x 1  # I/O詳細統計
+
+# ネットワーク監視
+nethogs  # プロセス別ネットワーク使用量
+```
+
+#### 最適化実行
+```bash
+# 不要プロセス停止
+sudo systemctl stop unnecessary_services
+
+# ファイルシステム最適化
+sudo fstrim -v /  # SSD TRIM
+
+# メモリキャッシュクリア（必要時のみ）
+sudo sync && sudo sysctl vm.drop_caches=3
+```
+
+### バックアップ・災害復旧
+
+#### データバックアップ
+```bash
+# 重要データバックアップ
+backup_essential.sh() {
+    BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
+    mkdir -p $BACKUP_DIR
+    
+    # 設定ファイル
+    cp -r config/ $BACKUP_DIR/
+    
+    # 知識ベース・学習データ
+    cp -r data/ $BACKUP_DIR/ 2>/dev/null || true
+    
+    # 実験結果・ログ
+    cp -r competitions/*/experiments/ $BACKUP_DIR/experiments/ 2>/dev/null || true
+    
+    # 圧縮
+    tar -czf $BACKUP_DIR.tar.gz $BACKUP_DIR/
+    rm -rf $BACKUP_DIR/
+    
+    echo "✅ バックアップ完了: $BACKUP_DIR.tar.gz"
+}
+
+# 自動バックアップ（毎日実行）
+echo "0 2 * * * cd $(pwd) && backup_essential.sh >> logs/backup.log 2>&1" | crontab -l | { cat; echo "0 2 * * * cd $(pwd) && backup_essential.sh >> logs/backup.log 2>&1"; } | crontab -
+```
+
+#### 障害復旧手順
+```bash
+# 1. システム復旧
+sudo systemctl stop kaggle-claude-mother
+git reset --hard HEAD  # コード復旧
+uv sync  # 依存関係復旧
+
+# 2. 設定復旧
+tar -xzf backups/latest_backup.tar.gz
+cp -r backups/*/config/ ./
+
+# 3. サービス再開
+sudo systemctl start kaggle-claude-mother
+sudo systemctl status kaggle-claude-mother
 ```
 
 ### 完全自動動作開始後（週2回動的最適化・最大3コンペ並行）

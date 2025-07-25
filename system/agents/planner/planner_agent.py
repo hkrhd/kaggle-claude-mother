@@ -7,8 +7,9 @@ plan_planner.md の実装仕様に準拠した核心エージェント。
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Tuple
+from dataclasses import dataclass
 import json
 import os
 
@@ -20,6 +21,14 @@ from .strategies.selection_strategy import CompetitionSelectionStrategy, Selecti
 from .strategies.withdrawal_strategy import WithdrawalStrategy
 from .utils.github_issues import GitHubIssueManager
 from .utils.kaggle_api import KaggleApiClient
+
+# 模擬的な計画結果クラス
+@dataclass
+class MockPlanResult:
+    plan_id: str
+    execution_phases: List[Dict[str, Any]]
+    estimated_total_duration_hours: float
+    resource_allocation: Dict[str, Any]
 
 
 class PlannerAgent:
@@ -36,7 +45,7 @@ class PlannerAgent:
         # エージェント基本情報
         self.agent_id = "planner"
         self.agent_version = "1.0"
-        self.startup_time = datetime.utcnow()
+        self.startup_time = datetime.now(timezone.utc)
         
         # コンポーネント初期化
         self.probability_calculator = MedalProbabilityCalculator()
@@ -129,7 +138,7 @@ class PlannerAgent:
                 "action_confidence": analysis_result.action_confidence,
                 "portfolio_action": portfolio_action,
                 "issue_result": issue_result,
-                "analysis_timestamp": datetime.utcnow().isoformat()
+                "analysis_timestamp": datetime.now(timezone.utc).isoformat()
             }
             
             self.logger.info(f"戦略分析実行完了: {analysis_result.recommended_action} ({competition_info.title})")
@@ -175,7 +184,7 @@ class PlannerAgent:
                 "new_portfolio_size": len(portfolio_recommendation.recommended_competitions),
                 "expected_medal_count": portfolio_recommendation.expected_medal_count,
                 "portfolio_score": portfolio_recommendation.portfolio_score,
-                "optimization_timestamp": datetime.utcnow().isoformat()
+                "optimization_timestamp": datetime.now(timezone.utc).isoformat()
             }
             
             self.logger.info(f"ポートフォリオ最適化完了: {len(changes_made)}件の変更")
@@ -245,7 +254,7 @@ class PlannerAgent:
                 },
                 "alert_issues": alert_issues_created,
                 "immediate_withdrawals": immediate_withdrawals,
-                "analysis_timestamp": datetime.utcnow().isoformat()
+                "analysis_timestamp": datetime.now(timezone.utc).isoformat()
             }
             
             self.logger.info(f"撤退分析実行完了: {analysis_result['withdrawal_recommended']}件の撤退推奨")
@@ -296,6 +305,41 @@ class PlannerAgent:
             ).isoformat() if self.analysis_history else self.startup_time.isoformat()
         }
     
+    async def create_competition_plan(
+        self,
+        competition_name: str,
+        competition_type: str,
+        deadline_days: int,
+        resource_constraints: Dict[str, Any]
+    ):
+        """競技計画作成（MasterOrchestrator互換）"""
+        
+        self.logger.info(f"競技計画作成開始: {competition_name}")
+        
+        try:
+            # 模擬的な計画作成（実際の実装では詳細な戦略策定）
+            plan_result = MockPlanResult(
+                plan_id=f"plan-{competition_name.lower().replace(' ', '-')}-{datetime.now(timezone.utc).strftime('%Y%m%d')}",
+                execution_phases=[
+                    {"phase": "data_analysis", "duration_hours": 8},
+                    {"phase": "feature_engineering", "duration_hours": 16},
+                    {"phase": "model_development", "duration_hours": 24},
+                    {"phase": "optimization", "duration_hours": 12}
+                ],
+                estimated_total_duration_hours=60,
+                resource_allocation={
+                    "gpu_hours": min(40, resource_constraints.get("max_gpu_hours", 50)),
+                    "api_calls": min(5000, resource_constraints.get("max_api_calls", 10000))
+                }
+            )
+            
+            self.logger.info(f"競技計画作成完了: {plan_result.plan_id}")
+            return plan_result
+            
+        except Exception as e:
+            self.logger.error(f"競技計画作成エラー: {e}")
+            raise
+
     async def _handle_issue_creation_update(
         self,
         competition_info: CompetitionInfo,

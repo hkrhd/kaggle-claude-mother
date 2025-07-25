@@ -8,6 +8,7 @@ Phase 4: 分析エージェント統合テスト
 
 import asyncio
 import sys
+import pytest
 from datetime import datetime, timedelta
 
 def test_phase4_imports():
@@ -28,6 +29,7 @@ def test_phase4_imports():
         print(f"❌ インポート失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_grandmaster_patterns():
     """グランドマスターパターン分析テスト"""
     print("\n=== グランドマスターパターン分析テスト ===")
@@ -63,6 +65,7 @@ async def test_grandmaster_patterns():
         print(f"❌ グランドマスターパターン分析失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_technical_feasibility():
     """技術実装可能性分析テスト"""
     print("\n=== 技術実装可能性分析テスト ===")
@@ -110,6 +113,7 @@ async def test_technical_feasibility():
         print(f"❌ 技術実装可能性分析失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_kaggle_solution_collector():
     """Kaggle解法収集テスト"""
     print("\n=== Kaggle解法収集テスト ===")
@@ -148,6 +152,7 @@ async def test_kaggle_solution_collector():
         print(f"❌ Kaggle解法収集失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_arxiv_paper_collector():
     """arXiv論文収集テスト"""
     print("\n=== arXiv論文収集テスト ===")
@@ -185,6 +190,7 @@ async def test_arxiv_paper_collector():
         print(f"❌ arXiv論文収集失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_web_search_integrator():
     """WebSearch統合調査テスト"""
     print("\n=== WebSearch統合調査テスト ===")
@@ -215,6 +221,7 @@ async def test_web_search_integrator():
         print(f"❌ WebSearch統合調査失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_github_issue_reporter():
     """GitHub Issue連携テスト"""
     print("\n=== GitHub Issue連携テスト ===")
@@ -300,6 +307,7 @@ async def test_github_issue_reporter():
         print(f"❌ GitHub Issue連携失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_analyzer_agent_integration():
     """分析エージェント統合テスト"""
     print("\n=== 分析エージェント統合テスト ===")

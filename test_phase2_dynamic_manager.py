@@ -5,6 +5,7 @@ Phase 2: 動的コンペ管理システム統合テスト
 
 import asyncio
 import sys
+import pytest
 from datetime import datetime
 
 def test_phase2_imports():
@@ -27,6 +28,7 @@ def test_phase2_imports():
         print(f"❌ インポート失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_medal_probability_calculator():
     """メダル確率算出テスト"""
     print("\n=== メダル確率算出テスト ===")
@@ -64,6 +66,7 @@ async def test_medal_probability_calculator():
         print(f"❌ メダル確率算出失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_portfolio_optimizer():
     """ポートフォリオ最適化テスト"""
     print("\n=== ポートフォリオ最適化テスト ===")

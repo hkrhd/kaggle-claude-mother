@@ -88,6 +88,15 @@ class SystemConfig:
     enable_experimental_features: bool = False
     feature_flags: Dict[str, bool] = field(default_factory=dict)
     
+    # 競技別設定
+    competition_settings: Dict[str, Any] = field(default_factory=dict)
+    
+    # クラウドプラットフォーム設定
+    cloud_platforms: Dict[str, Any] = field(default_factory=dict)
+    
+    # ストレージ設定
+    storage: Dict[str, Any] = field(default_factory=dict)
+    
     def __post_init__(self):
         # デフォルトエージェント設定
         if not self.agent_configs:

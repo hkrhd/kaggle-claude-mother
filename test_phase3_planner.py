@@ -5,6 +5,7 @@ Phase 3: プランニングエージェント統合テスト
 
 import asyncio
 import sys
+import pytest
 from datetime import datetime, timedelta
 
 def test_phase3_imports():
@@ -29,6 +30,7 @@ def test_phase3_imports():
         print(f"❌ インポート失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_medal_probability_calculator():
     """メダル確率算出テスト"""
     print("\n=== メダル確率算出テスト ===")
@@ -68,6 +70,7 @@ async def test_medal_probability_calculator():
         print(f"❌ メダル確率算出失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_competition_selection_strategy():
     """コンペ選択戦略テスト"""
     print("\n=== コンペ選択戦略テスト ===")
@@ -109,6 +112,7 @@ async def test_competition_selection_strategy():
         print(f"❌ コンペ選択戦略テスト失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_withdrawal_strategy():
     """撤退戦略テスト"""
     print("\n=== 撤退戦略テスト ===")
@@ -158,6 +162,7 @@ async def test_withdrawal_strategy():
         print(f"❌ 撤退戦略テスト失敗: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_planner_agent_basic():
     """プランニングエージェント基本テスト"""
     print("\n=== プランニングエージェント基本テスト ===")

@@ -12,7 +12,7 @@ import os
 import logging
 import argparse
 import signal
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 
 # パス設定
@@ -21,8 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'system'))
 # システムコンポーネント
 from system.orchestrator.master_orchestrator import MasterOrchestrator, OrchestrationMode
 from system.config.system_config import ConfigManager, get_config
-from system.competition_manager.dynamic_competition_manager import DynamicCompetitionManager
-
+from system.dynamic_competition_manager import DynamicCompetitionManager
 
 class ClaudeMotherSystem:
     """Claude Mother System メインアプリケーション"""
@@ -31,6 +30,9 @@ class ClaudeMotherSystem:
         # 設定読み込み
         self.config_manager = ConfigManager(config_path)
         self.config = self.config_manager.load_config()
+        
+        # GitHub認証の自動設定（gh CLI使用時）
+        self._setup_github_auth()
         
         # ログ設定
         self.setup_logging()
@@ -49,6 +51,44 @@ class ClaudeMotherSystem:
         signal.signal(signal.SIGTERM, self._signal_handler)
         
         self.logger.info(f"🚀 Claude Mother System 初期化完了 (v{self.config.version})")
+    
+    def _setup_github_auth(self):
+        """GitHub認証の自動設定"""
+        
+        # 既に設定済みの場合はスキップ
+        if self.config.github_token and self.config.repo_name:
+            return
+        
+        try:
+            import subprocess
+            
+            # gh auth statusでトークン取得
+            if not self.config.github_token:
+                try:
+                    result = subprocess.run(['gh', 'auth', 'token'], 
+                                         capture_output=True, text=True, check=True)
+                    self.config.github_token = result.stdout.strip()
+                except subprocess.CalledProcessError:
+                    print("⚠️  gh auth token failed. GitHub機能は制限されます。")
+            
+            # 現在のリポジトリ名取得
+            if not self.config.repo_name:
+                try:
+                    result = subprocess.run(['gh', 'repo', 'view', '--json', 'nameWithOwner'], 
+                                         capture_output=True, text=True, check=True)
+                    import json
+                    repo_data = json.loads(result.stdout)
+                    self.config.repo_name = repo_data['nameWithOwner']
+                except subprocess.CalledProcessError:
+                    # フォールバック: このディレクトリから推測
+                    import os
+                    current_dir = os.path.basename(os.getcwd())
+                    username = os.environ.get('USER', 'user')
+                    self.config.repo_name = f"{username}/{current_dir}"
+                    print(f"ℹ️  リポジトリ名を推測: {self.config.repo_name}")
+            
+        except ImportError:
+            print("⚠️  GitHub連携にはsubprocessが必要です")
     
     def setup_logging(self):
         """ログ設定"""
@@ -136,7 +176,7 @@ class ClaudeMotherSystem:
             "id": f"manual-{competition_name.lower().replace(' ', '-')}",
             "name": competition_name,
             "type": competition_type,
-            "deadline": (datetime.utcnow().add(days=30)).isoformat(),
+            "deadline": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
             "priority": "high",
             "resource_budget": {
                 "max_gpu_hours": max_gpu_hours or self.config.default_gpu_budget_hours,
@@ -216,7 +256,7 @@ class ClaudeMotherSystem:
             "environment": self.config.environment.value,
             "system_version": self.config.version,
             "orchestrator_status": orchestrator_status,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     
     async def stop_system(self):

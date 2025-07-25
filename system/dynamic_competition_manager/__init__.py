@@ -45,6 +45,12 @@ from .schedulers.dynamic_scheduler import (
     ExecutionStatus
 )
 
+# 統合管理システム
+from .dynamic_competition_manager import (
+    DynamicCompetitionManager,
+    ActiveCompetition
+)
+
 __all__ = [
     # メダル確率算出
     "MedalProbabilityCalculator",
@@ -74,5 +80,9 @@ __all__ = [
     "ScheduledTask",
     "ScheduleType",
     "ExecutionResult",
-    "ExecutionStatus"
+    "ExecutionStatus",
+    
+    # 統合管理システム
+    "DynamicCompetitionManager",
+    "ActiveCompetition"
 ]
