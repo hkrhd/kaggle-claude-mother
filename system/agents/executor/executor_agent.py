@@ -8,7 +8,8 @@ analyzerの技術分析結果を受けて、複数クラウド環境での
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta
+import pandas as pd
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any, Tuple
 from enum import Enum
@@ -17,7 +18,7 @@ from enum import Enum
 from .cloud_managers.kaggle_kernel_manager import KaggleKernelManager
 from .cloud_managers.colab_execution_manager import ColabExecutionManager
 from .cloud_managers.paperspace_manager import PaperspaceManager
-from .cloud_managers.resource_optimizer import CloudResourceOptimizer
+from .cloud_managers.resource_optimizer import CloudResourceOptimizer, ExecutionRequirement
 
 # コード生成・実験設計
 from .code_generators.notebook_generator import NotebookGenerator
@@ -32,6 +33,13 @@ from .optimization.hyperparameter_tuner import HyperparameterTuner
 # GitHub Issue安全システム
 from ...issue_safety_system.utils.github_api_wrapper import GitHubApiWrapper
 from ...issue_safety_system.concurrency_control.atomic_operations import AtomicIssueOperations
+
+# Kaggle API と NLP モデル
+from .kaggle_api_client import KaggleAPIClient
+
+# LLMベース提出判断
+from .submission_decision_agent import SubmissionDecisionAgent, SubmissionContext
+from ..shared.llm_decision_base import ClaudeClient
 
 class CloudEnvironment(Enum):
     """クラウド実行環境"""
@@ -137,6 +145,13 @@ class ExecutorAgent:
         
         # 最適化エンジン
         self.hyperparameter_tuner = HyperparameterTuner()
+        
+        # Kaggle API連携
+        self.kaggle_client = KaggleAPIClient()
+        
+        # LLMベース提出判断エージェント
+        claude_client = ClaudeClient()
+        self.submission_decision_agent = SubmissionDecisionAgent(claude_client)
         
         # 実行履歴
         self.execution_history: List[ExecutionResult] = []
@@ -283,13 +298,34 @@ class ExecutorAgent:
             )
             implementation_costs.append(cost)
         
+        # ExecutionRequirementに変換
+        execution_requirements = []
+        for i, technique in enumerate(result.request.techniques_to_implement):
+            req = ExecutionRequirement(
+                technique_name=technique.get("technique", f"technique_{i}"),
+                competition_name=result.request.competition_name,
+                estimated_gpu_hours=implementation_costs[i].get("gpu_hours", 2.0),
+                estimated_cpu_hours=implementation_costs[i].get("cpu_hours", 1.0),
+                memory_gb_required=4.0,
+                storage_gb_required=2.0,
+                deadline_hours=result.request.deadline_days * 24,
+                priority_score=technique.get("integrated_score", 0.5),
+                complexity_level=0.5
+            )
+            execution_requirements.append(req)
+        
         # 最適なリソース配分を決定
-        result.resource_allocation = await self.resource_optimizer.optimize_experiment_allocation(
-            techniques=result.request.techniques_to_implement,
-            costs=implementation_costs,
-            priority=result.request.priority,
-            max_gpu_hours=result.resource_constraints["max_gpu_hours"]
+        allocations = await self.resource_optimizer.optimize_experiment_allocation(
+            experiments=execution_requirements
         )
+        
+        # 結果を辞書形式に変換
+        result.resource_allocation = {}
+        for allocation in allocations:
+            result.resource_allocation[allocation.technique_name] = {
+                "environments": [allocation.platform.value],
+                "gpu_hours": allocation.allocated_gpu_hours
+            }
         
         self.logger.info(f"リソース計画完了: {len(result.resource_allocation)}技術配分")
     
@@ -416,23 +452,288 @@ class ExecutorAgent:
         self.logger.info(f"結果収集完了: 提出準備{'完了' if result.submission_ready else '未完'}")
     
     async def _phase_submission(self, result: ExecutionResult):
-        """提出フェーズ"""
+        """提出フェーズ - LLMベース提出判断統合"""
         
         if not result.submission_ready:
             self.logger.warning("提出準備未完のため提出フェーズをスキップ")
             return
         
-        # 最高性能モデルでの提出実行（模擬）
-        submission_result = {
-            "submitted": True,
-            "model_config": result.best_model_config,
-            "final_score": result.best_score,
-            "submission_timestamp": datetime.utcnow()
-        }
+        try:
+            # LLMベース提出判断実行
+            submission_context = await self._create_submission_context(result)
+            
+            # 緊急度判定
+            urgency = self._determine_submission_urgency(result)
+            
+            # LLM提出判断
+            decision_response = await self.submission_decision_agent.should_submit_competition(
+                context=submission_context,
+                urgency=urgency
+            )
+            
+            self.logger.info(
+                f"🤖 LLM提出判断: {decision_response.decision_result['decision']} "
+                f"(信頼度: {decision_response.confidence_score:.2f})"
+            )
+            
+            # 判断に基づく実行
+            decision = decision_response.decision_result["decision"]
+            
+            if decision == "SUBMIT":
+                # 提出実行
+                competition_name = result.request.competition_name.lower().replace(' ', '-')
+                await self._submit_generic_competition(result, competition_name)
+                
+                # LLM判断履歴記録
+                result.llm_submission_decision = decision_response.decision_result
+                
+            elif decision == "CONTINUE":
+                # 実験継続指示
+                self.logger.info("🔄 LLM判断: 実験継続推奨")
+                result.submission_info = {
+                    "submitted": False, 
+                    "reason": "llm_decision_continue",
+                    "llm_reasoning": decision_response.reasoning
+                }
+                
+                # 継続実験の実行（必要に応じて）
+                await self._execute_continued_experiments(result, decision_response)
+                
+            else:  # "WAIT"
+                # 待機
+                self.logger.info("⏳ LLM判断: 待機推奨")
+                result.submission_info = {
+                    "submitted": False,
+                    "reason": "llm_decision_wait", 
+                    "llm_reasoning": decision_response.reasoning,
+                    "next_evaluation_time": decision_response.decision_result.get("timeline_recommendation", "1時間後")
+                }
+                
+        except Exception as e:
+            self.logger.error(f"LLM提出判断エラー: {e}")
+            
+            # フォールバック: 従来の提出判断
+            if result.best_score > 0 and result.success_rate > 0.5:
+                competition_name = result.request.competition_name.lower().replace(' ', '-')
+                await self._submit_generic_competition(result, competition_name)
+            
+            result.submission_info = {"submitted": False, "error": str(e), "fallback_used": True}
+    
+    async def _create_submission_context(self, result: ExecutionResult) -> SubmissionContext:
+        """提出判断用コンテキスト作成"""
         
-        result.submission_info = submission_result
+        request = result.request
         
-        self.logger.info(f"提出完了: スコア{result.best_score:.4f}")
+        # スコア履歴（模擬データ）
+        score_history = [result.best_score * (0.8 + i * 0.05) for i in range(5)]
+        if len(score_history) > 1:
+            recent_improvement = score_history[-1] - score_history[-2] 
+        else:
+            recent_improvement = 0.0
+        
+        # 競合情報（模擬データ）
+        leaderboard_top10 = [result.best_score * (1.1 + i * 0.02) for i in range(10)]
+        medal_threshold = result.best_score * 0.95
+        
+        # メダル圏判定
+        if result.best_score >= leaderboard_top10[2]:
+            medal_zone = "gold"
+        elif result.best_score >= leaderboard_top10[5]:
+            medal_zone = "silver"
+        elif result.best_score >= medal_threshold:
+            medal_zone = "bronze"
+        else:
+            medal_zone = "none"
+        
+        # 締切までの時間（模擬）
+        deadline_hours = max(6, request.deadline_days * 24 - 24)  # 1日前を仮定
+        
+        return SubmissionContext(
+            competition_name=request.competition_name,
+            current_best_score=result.best_score,
+            target_score=result.best_score * 1.1,  # 10%改善目標
+            current_rank_estimate=max(50, 1000 - int(result.best_score * 1000)),
+            total_participants=5000,  # 仮想参加者数
+            days_remaining=max(1, request.deadline_days - 1),
+            hours_remaining=deadline_hours,
+            
+            experiments_completed=result.total_experiments_run,
+            experiments_running=0,  # 現在は実行中実験を追跡していない
+            success_rate=result.success_rate,
+            resource_budget_remaining=max(0.1, 1.0 - (result.total_gpu_hours_used / 20.0)),
+            
+            score_history=score_history,
+            score_improvement_trend=recent_improvement,
+            plateau_duration_hours=max(0, 12 - recent_improvement * 100),
+            
+            leaderboard_top10_scores=leaderboard_top10,
+            medal_threshold_estimate=medal_threshold,
+            current_medal_zone=medal_zone,
+            
+            model_stability=min(1.0, result.success_rate + 0.2),
+            overfitting_risk=max(0.0, 0.8 - result.success_rate),
+            technical_debt_level=0.3  # 固定値
+        )
+    
+    def _determine_submission_urgency(self, result: ExecutionResult) -> str:
+        """提出緊急度判定"""
+        
+        hours_remaining = max(6, result.request.deadline_days * 24 - 24)
+        
+        if hours_remaining < 12:
+            return "critical"
+        elif hours_remaining < 48:
+            return "high"
+        elif hours_remaining < 120:  # 5日
+            return "medium"
+        else:
+            return "low"
+    
+    async def _execute_continued_experiments(
+        self, 
+        result: ExecutionResult, 
+        decision_response
+    ):
+        """継続実験実行（LLM推奨に基づく）"""
+        
+        try:
+            alternative_actions = decision_response.decision_result.get("alternative_actions", [])
+            
+            self.logger.info(f"🔬 継続実験開始: {len(alternative_actions)}アクション")
+            
+            for action in alternative_actions[:2]:  # 最大2アクション実行
+                if "パラメータ" in action:
+                    # パラメータ調整実験
+                    self.logger.info(f"🎛️ パラメータ調整実行: {action}")
+                    
+                elif "特徴量" in action:
+                    # 特徴量エンジニアリング
+                    self.logger.info(f"🔧 特徴量エンジニアリング: {action}")
+                    
+                elif "モデル" in action:
+                    # モデル変更実験
+                    self.logger.info(f"🤖 モデル実験: {action}")
+                
+                # 実際の実験実行（模擬）
+                await asyncio.sleep(1)  # 実験時間のシミュレーション
+            
+            # 継続実験完了を記録
+            result.continued_experiments = {
+                "executed_actions": alternative_actions[:2],
+                "execution_time": datetime.utcnow(),
+                "triggered_by": "llm_submission_decision"
+            }
+            
+        except Exception as e:
+            self.logger.error(f"継続実験エラー: {e}")
+    
+    async def _submit_generic_competition(self, result: ExecutionResult, competition_name: str):
+        """汎用競技提出処理"""
+        
+        self.logger.info(f"🚀 競技提出開始: {competition_name}")
+        
+        try:
+            # データダウンロード
+            dataset = await self.kaggle_client.download_competition_data(competition_name)
+            if not dataset:
+                raise ValueError("データダウンロード失敗")
+            
+            # 基本的な機械学習モデル（汎用）
+            from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+            from sklearn.preprocessing import LabelEncoder
+            import numpy as np
+            
+            # 特徴量・ターゲット自動検出
+            train_data = dataset.train_data.copy()
+            test_data = dataset.test_data.copy()
+            
+            # ターゲット列を特定（一般的なパターン）
+            target_col = None
+            for col in ['target', 'Survived', 'SalePrice', 'label', 'y']:
+                if col in train_data.columns:
+                    target_col = col
+                    break
+            
+            if not target_col:
+                raise ValueError("ターゲット列が特定できません")
+            
+            # 数値特徴量を自動選択
+            numeric_features = train_data.select_dtypes(include=[np.number]).columns.tolist()
+            if target_col in numeric_features:
+                numeric_features.remove(target_col)
+            if 'Id' in numeric_features:
+                numeric_features.remove('Id')
+            
+            # 基本的な前処理
+            for col in numeric_features:
+                if col in train_data.columns and col in test_data.columns:
+                    train_data[col].fillna(train_data[col].median(), inplace=True)
+                    test_data[col].fillna(train_data[col].median(), inplace=True)
+            
+            # カテゴリ特徴量も処理
+            categorical_features = train_data.select_dtypes(include=['object']).columns.tolist()
+            le_dict = {}
+            
+            for col in categorical_features:
+                if col in test_data.columns:
+                    le = LabelEncoder()
+                    combined = pd.concat([train_data[col].astype(str), test_data[col].astype(str)])
+                    le.fit(combined)
+                    train_data[col] = le.transform(train_data[col].astype(str))
+                    test_data[col] = le.transform(test_data[col].astype(str))
+                    le_dict[col] = le
+            
+            # 特徴量結合
+            all_features = numeric_features + categorical_features
+            available_features = [f for f in all_features if f in train_data.columns and f in test_data.columns]
+            
+            # モデル選択（分類 vs 回帰）
+            target_values = train_data[target_col]
+            is_classification = len(target_values.unique()) < 20 and target_values.dtype in ['int64', 'bool']
+            
+            X_train = train_data[available_features]
+            y_train = train_data[target_col]
+            X_test = test_data[available_features]
+            
+            if is_classification:
+                model = RandomForestClassifier(n_estimators=100, random_state=42)
+                model_type = "Classification"
+            else:
+                model = RandomForestRegressor(n_estimators=100, random_state=42)
+                model_type = "Regression"
+            
+            model.fit(X_train, y_train)
+            
+            # 予測
+            predictions = model.predict(X_test)
+            
+            # 提出ファイル作成
+            submission_df = dataset.sample_submission.copy()
+            submission_df.iloc[:, 1] = predictions  # 2列目に予測値
+            
+            # Kaggle提出
+            submission_result = await self.kaggle_client.submit_predictions(
+                competition_name=competition_name,
+                predictions_df=submission_df,
+                description=f"Claude {model_type} RandomForest Baseline"
+            )
+            
+            if submission_result:
+                result.submission_info = {
+                    "submitted": True,
+                    "submission_id": submission_result.submission_id,
+                    "model_type": f"RandomForest{model_type}",
+                    "features_used": len(available_features),
+                    "submission_timestamp": datetime.now(timezone.utc)
+                }
+                
+                self.logger.info(f"✅ 競技提出完了: {submission_result.submission_id}")
+            else:
+                raise ValueError("Kaggle提出失敗")
+                
+        except Exception as e:
+            self.logger.error(f"競技提出エラー: {e}")
+            result.submission_info = {"submitted": False, "error": str(e)}
     
     async def _parse_analyzer_recommendations(self, issue_body: str) -> Dict[str, Any]:
         """analyzerからの技術推奨解析"""

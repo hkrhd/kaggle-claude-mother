@@ -90,21 +90,21 @@ class TestComprehensiveDeterministicLongTerm:
             "temporal_accumulation_prevention_rate": 0.99999  # 99.999%以上
         }
         
-        # テスト用競技データ（タイタニック）
+        # テスト用競技データ（汎用）
         self.test_competition = {
-            "id": "titanic",
-            "name": "Titanic - Machine Learning from Disaster",
+            "id": "generic-competition",
+            "name": "Generic ML Competition",
             "type": "tabular",
-            "url": "https://www.kaggle.com/competitions/titanic",
+            "url": "https://www.kaggle.com/competitions/generic-ml",
             "deadline": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
             "priority": "high",
-            "description": "Use machine learning to create a model that predicts which passengers survived the Titanic shipwreck",
+            "description": "Generic machine learning competition for testing",
             "evaluation_metric": "Accuracy",
             "dataset_info": {
-                "train_size": 891,
-                "test_size": 418,
-                "features": ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked"],
-                "target": "Survived"
+                "train_size": 1000,
+                "test_size": 500,
+                "features": ["feature1", "feature2", "feature3"],
+                "target": "target"
             },
             "resource_budget": {
                 "max_gpu_hours": 2.0,

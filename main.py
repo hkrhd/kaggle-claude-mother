@@ -297,7 +297,7 @@ async def main():
     
     parser.add_argument(
         "--mode", 
-        choices=["single", "autonomous", "status"],
+        choices=["single", "autonomous", "status", "service"],
         default="single",
         help="実行モード"
     )
@@ -392,6 +392,27 @@ async def main():
                 print(f"処理済み競技数: {orch_status['total_competitions_handled']}")
                 print(f"成功率: {orch_status['success_rate']:.1%}")
                 print(f"稼働時間: {orch_status['uptime_hours']:.1f}時間")
+            
+            return 0
+        
+        elif args.mode == "service":
+            # systemdサービスモード（長時間実行）
+            system.logger.info("🔧 systemdサービスモード開始")
+            
+            # システム初期化
+            await system.initialize_system()
+            
+            # 自律実行モード開始（無限ループ）
+            try:
+                await system.start_autonomous_mode()
+                
+                # サービスとして継続実行
+                while system.is_running:
+                    await asyncio.sleep(60)  # 1分間隔で生存確認
+                    
+            except Exception as e:
+                system.logger.error(f"❌ サービスモードエラー: {e}")
+                raise
             
             return 0
         

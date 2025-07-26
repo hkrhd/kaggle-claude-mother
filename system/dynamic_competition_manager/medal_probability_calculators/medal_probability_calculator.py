@@ -83,7 +83,7 @@ class ExpertiseProfile:
 @dataclass
 class MedalProbabilityResult:
     """メダル確率算出結果"""
-    overall_probability: float
+    overall_medal_probability: float
     bronze_probability: float
     silver_probability: float
     gold_probability: float
@@ -181,7 +181,7 @@ class MedalProbabilityCalculator:
             )
             
             result = MedalProbabilityResult(
-                overall_probability=medal_probability,
+                overall_medal_probability=medal_probability,
                 bronze_probability=medal_probability * 0.6,
                 silver_probability=medal_probability * 0.4,
                 gold_probability=medal_probability * 0.2,

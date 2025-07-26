@@ -827,7 +827,7 @@ class CompetitionSelectionStrategy:
         comp_type = competition_info.competition_type.value
         
         if comp_type == "tabular":
-            alternatives = ["Tabular Playground Series", "House Prices", "Titanic"]
+            alternatives = ["Tabular Playground Series", "Structured Data Competitions"]
         elif comp_type == "computer_vision":
             alternatives = ["CIFAR-10", "Fashion-MNIST", "Plant Pathology"]
         elif comp_type == "nlp":
