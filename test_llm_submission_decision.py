@@ -26,8 +26,8 @@ async def test_llm_basic_submission_decision():
     logger.info("🤖 基本LLM提出判断テスト開始")
     
     try:
-        # Claude クライアント初期化
-        claude_client = ClaudeClient()
+        # Claude クライアント初期化（モデル指定付き）
+        claude_client = ClaudeClient(model=CLAUDE_MODEL)
         
         # 提出判断エージェント作成
         submission_agent = SubmissionDecisionAgent(claude_client)
@@ -107,7 +107,7 @@ async def test_llm_different_scenarios():
     logger.info("🎯 シナリオ別LLM提出判断テスト開始")
     
     try:
-        claude_client = ClaudeClient()
+        claude_client = ClaudeClient(model=CLAUDE_MODEL)
         submission_agent = SubmissionDecisionAgent(claude_client)
         
         # シナリオ1: 低スコア・時間切迫
@@ -268,7 +268,7 @@ async def test_fallback_mechanism():
     
     try:
         # 故意にタイムアウトを短く設定してフォールバックを誘発
-        claude_client = ClaudeClient()
+        claude_client = ClaudeClient(model=CLAUDE_MODEL)
         submission_agent = SubmissionDecisionAgent(claude_client)
         
         # 非常に短いタイムアウト設定のテストコンテキスト

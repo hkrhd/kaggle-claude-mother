@@ -9,13 +9,14 @@ import asyncio
 import sys
 import os
 import logging
+import subprocess
 from datetime import datetime, timedelta
 
 # パス設定
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'system'))
 
 # LLMベース判断システム
-from system.agents.shared.llm_decision_base import ClaudeClient
+from system.agents.shared.llm_decision_base import ClaudeClient, CLAUDE_MODEL
 from system.agents.executor.submission_decision_agent import SubmissionDecisionAgent, SubmissionContext
 from system.agents.executor.executor_agent import ExecutorAgent, ExecutionRequest, ExecutionPriority
 
@@ -29,6 +30,22 @@ from system.agents.analyzer.analyzer_agent import AnalyzerAgent
 from system.agents.monitor.monitor_agent import MonitorAgent
 
 
+def get_github_token():
+    """GitHub認証トークンを動的に取得"""
+    try:
+        # gh auth token コマンドでトークンを取得
+        result = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError:
+        # フォールバック: 環境変数から取得
+        return os.environ.get("GITHUB_TOKEN", "test_token")
+
+
 async def test_llm_submission_decision():
     """LLMベース提出判断テスト"""
     
@@ -36,8 +53,8 @@ async def test_llm_submission_decision():
     logger.info("🤖 LLMベース提出判断テスト開始")
     
     try:
-        # Claude クライアント初期化
-        claude_client = ClaudeClient()
+        # Claude クライアント初期化（モデル指定付き）
+        claude_client = ClaudeClient(model=CLAUDE_MODEL)
         
         # 提出判断エージェント作成
         submission_agent = SubmissionDecisionAgent(claude_client)
@@ -126,10 +143,13 @@ async def test_integrated_executor_agent():
     logger.info("⚡ LLM統合ExecutorAgentテスト開始")
     
     try:
+        # GitHub認証トークン取得
+        github_token = get_github_token()
+        
         # ExecutorAgent初期化（LLMベース提出判断統合）
         executor = ExecutorAgent(
-            github_token="test_token",
-            repo_name="test/repo"
+            github_token=github_token,
+            repo_name="hkrhd/kaggle-claude-mother"
         )
         
         # テスト用実行リクエスト
@@ -207,22 +227,26 @@ async def test_multi_agent_llm_coordination():
     logger.info("🌐 マルチエージェントLLM連携テスト開始")
     
     try:
+        # GitHub認証トークン取得
+        github_token = get_github_token()
+        repo_name = "hkrhd/kaggle-claude-mother"
+        
         # 各エージェント初期化
         competition_selector = CompetitionSelectorAgent(
-            github_token="test_token",
-            repo_name="test/repo"
+            github_token=github_token,
+            repo_name=repo_name
         )
         
         analyzer = AnalyzerAgent()
         
         executor = ExecutorAgent(
-            github_token="test_token", 
-            repo_name="test/repo"
+            github_token=github_token, 
+            repo_name=repo_name
         )
         
         monitor = MonitorAgent(
-            github_token="test_token",
-            repo_name="test/repo"
+            github_token=github_token,
+            repo_name=repo_name
         )
         
         # 1. 競技選択（既存LLMベース）

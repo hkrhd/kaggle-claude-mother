@@ -39,10 +39,15 @@ system/agents/planner/
 │   └── competition_scanner.py  # アクティブコンペスキャン
 ├── strategies/
 │   ├── selection_strategy.py   # コンペ選択戦略
-│   └── withdrawal_strategy.py  # 撤退判断戦略
+│   ├── withdrawal_strategy.py  # 撤退判断戦略
+│   └── llm_competition_analyzer.py  # LLM競技分析
+├── prompts/
+│   ├── competition_deep_analysis.md  # 競技深層分析プロンプト
+│   └── winning_pattern_extraction.md # 勝利パターン抽出プロンプト
 └── utils/
     ├── kaggle_api.py       # Kaggle API操作
-    └── github_issues.py    # Issue作成・更新
+    ├── github_issues.py    # Issue作成・更新
+    └── llm_client.py       # LLM呼び出しクライアント
 ```
 
 **設計根拠**:
@@ -52,9 +57,11 @@ system/agents/planner/
 
 ### 3. メダル確率算出アルゴリズム
 
-#### 多次元確率モデル
+#### 3段階ハイブリッド評価システム
+
+**Phase 1: 数値的初期スクリーニング（ルールベース）**
 ```python
-medal_probability = base_score * domain_match * timing_factor * resource_efficiency
+initial_score = base_score * domain_match * timing_factor * resource_efficiency
 
 # 各要素の重み付き計算
 base_score = participants_factor * prize_factor * competition_type_factor
@@ -63,10 +70,39 @@ timing_factor = remaining_time / total_time * urgency_weight
 resource_efficiency = estimated_compute_cost / available_resources
 ```
 
+**Phase 2: LLM深層競技分析**
+```python
+# 競技の「隠れた特性」を発見
+llm_analysis = await analyze_competition_characteristics(
+    competition_info,
+    historical_patterns,
+    grandmaster_insights
+)
+
+# 分析要素:
+# - データセットの「罠」や特殊性
+# - 評価指標の特異性（public/private乖離リスク）
+# - 競技主催者の過去傾向
+# - 類似競技での勝利パターン
+```
+
+**Phase 3: 統合メダル確率算出**
+```python
+# ルールベースとLLM分析の統合
+final_medal_probability = {
+    "gold": initial_score.gold * llm_analysis.gold_feasibility,
+    "silver": initial_score.silver * llm_analysis.silver_feasibility,
+    "bronze": initial_score.bronze * llm_analysis.bronze_feasibility,
+    "confidence": min(initial_score.confidence, llm_analysis.confidence),
+    "hidden_difficulty": llm_analysis.hidden_difficulty_score,
+    "winning_strategy": llm_analysis.recommended_approach
+}
+```
+
 **採用根拠**:
-- **多面的評価**: 単純参加者数でなく包括的リスク評価
-- **動的調整**: 残り時間・リソース状況の自動反映
-- **学習適応**: 過去実績による個人適応スコア
+- **精度向上**: 数値分析とLLM洞察の相乗効果
+- **隠れリスク発見**: 表面的指標では見えない競技特性把握
+- **戦略的優位**: 他参加者が見落とす勝利要因の特定
 
 #### グランドマスター事例分析統合
 **実装方針**:
@@ -74,20 +110,99 @@ resource_efficiency = estimated_compute_cost / available_resources
 - 過去優勝解法の技術難易度定量化
 - 個人スキルセットとのマッチング係数算出
 
+#### LLM活用による競技選択精度向上
+**勝ちやすい競技の特徴抽出**:
+```python
+class WinnableCompetitionPatterns:
+    # LLMが学習する勝利パターン
+    patterns = [
+        "明確な評価指標で過学習リスクが低い",
+        "データ品質が高く前処理負荷が少ない",
+        "既知の強力な手法が適用可能",
+        "計算リソース差が結果に影響しにくい",
+        "早期参戦による先行者利益が大きい"
+    ]
+    
+    async def evaluate_winnability(self, competition):
+        # 複数の観点から勝利可能性を評価
+        return await self.llm_analyzer.analyze(
+            competition=competition,
+            patterns=self.patterns,
+            historical_successes=self.success_database
+        )
+```
+
+**早期参戦タイミング判断**:
+```python
+async def evaluate_early_entry_advantage(competition):
+    # LLMによる参戦タイミング分析
+    timing_analysis = await llm_analyzer.analyze_timing(
+        days_since_start=competition.days_elapsed,
+        total_participants=competition.current_participants,
+        leaderboard_stability=competition.score_volatility,
+        remaining_time=competition.days_remaining
+    )
+    
+    # 早期参戦の優位性スコア
+    return {
+        "advantage_score": timing_analysis.early_advantage,
+        "optimal_entry_window": timing_analysis.best_timing,
+        "risk_of_delay": timing_analysis.delay_penalty
+    }
+```
+
 ### 4. GitHub Issue連携システム
 
-#### 原子性操作保証
+#### 原子性操作保証と可読性向上
 ```python
-async def create_strategy_issue(competition_info):
+async def create_strategy_issue(competition_info, analysis_result):
     # 重複チェック→作成→ラベル付けを原子的実行
     existing = await check_duplicate_issue(comp=competition_info.name, agent="planner")
     if existing:
         return await update_existing_issue(existing.number, new_analysis)
     
-    # UUID suffix付きタイトルで重複回避
-    title = f"[{competition_info.name}] planner: Medal Strategy Analysis - {uuid4().hex[:8]}"
+    # 明確で理解しやすいタイトル
+    medal_emoji = get_medal_emoji(analysis_result.medal_probability)
+    title = f"{medal_emoji} [{competition_info.name}] メダル獲得戦略: {analysis_result.winning_strategy[:30]}..."
+    
+    # 構造化された本文テンプレート
+    body = generate_strategic_issue_body(
+        competition_info=competition_info,
+        medal_probability=analysis_result.medal_probability,
+        winning_patterns=analysis_result.winning_patterns,
+        action_items=analysis_result.next_steps,
+        risk_factors=analysis_result.identified_risks
+    )
     
     return await create_issue_with_retry(title, body, labels)
+```
+
+#### 改善されたIssueテンプレート
+```markdown
+# 🏆 メダル獲得戦略分析: {competition_name}
+
+## 📊 メダル確率評価
+- **Gold**: {gold_probability}% {gold_feasibility_note}
+- **Silver**: {silver_probability}% {silver_feasibility_note}
+- **Bronze**: {bronze_probability}% {bronze_feasibility_note}
+
+## 🎯 勝利戦略
+### 推奨アプローチ: {winning_strategy}
+{strategy_details}
+
+### 成功要因
+{success_factors_list}
+
+## ⚠️ リスク要因
+{risk_factors_with_mitigation}
+
+## 🚀 次のアクション
+- [ ] Analyzerエージェントによる技術分析
+- [ ] グランドマスター解法調査
+- [ ] 実装計画策定
+
+---
+自動生成: {timestamp} | エージェント: planner v{version}
 ```
 
 **採用根拠**:
@@ -157,11 +272,18 @@ def should_withdraw(competition, current_rank, remaining_time):
 
 ### 6. 初期実装スコープ
 
-#### Phase 1: コア機能（1週間）
-1. **基本メダル確率算出**: 参加者数・賞金・残り時間ベース
-2. **GitHub Issue作成**: 基本的なIssue連携機能
+#### Phase 1: コア機能とLLM統合（1週間）
+1. **3段階メダル確率算出**: 
+   - 数値的初期スクリーニング
+   - LLM深層分析統合
+   - 統合確率算出
+2. **改善されたGitHub Issue作成**: 
+   - 可読性の高いテンプレート
+   - 構造化された戦略情報
 3. **Kaggle API統合**: アクティブコンペ一覧取得
-4. **シンプル戦略判断**: 上位3コンペ選択ロジック
+4. **LLMプロンプトシステム**: 
+   - 競技深層分析プロンプト
+   - 勝利パターン抽出プロンプト
 
 #### Phase 2: 高度機能（2週間）
 1. **動的最適化**: 週2回自動スキャン・入れ替え
@@ -194,10 +316,12 @@ def should_withdraw(competition, current_rank, remaining_time):
 
 ## 成功指標
 
-1. **確率精度**: 算出確率とメダル実績の相関係数 > 0.8
-2. **応答性能**: Issue作成から次エージェント起動まで < 5分
-3. **安定性**: 1ヶ月連続運用でのクラッシュ・重複Issue発生ゼロ
-4. **効率性**: 最適3コンペ維持率 > 95%（週2回チェック）
+1. **確率精度**: 算出確率とメダル実績の相関係数 > 0.85（LLM統合により向上）
+2. **競技選択精度**: 「勝ちやすい」競技の的中率 > 70%
+3. **応答性能**: Issue作成から次エージェント起動まで < 5分
+4. **安定性**: 1ヶ月連続運用でのクラッシュ・重複Issue発生ゼロ
+5. **効率性**: 最適3コンペ維持率 > 95%（週2回チェック）
+6. **早期参戦効果**: 最適タイミングでの参戦率 > 80%
 
 ## リスク対策
 

@@ -11,6 +11,7 @@ import asyncio
 import sys
 import os
 import logging
+import subprocess
 from datetime import datetime
 from typing import Dict, List, Any
 
@@ -73,6 +74,21 @@ class Phase5IntegrationTest:
             }
         ]
     
+    def _get_github_token(self):
+        """GitHub認証トークンを動的に取得"""
+        try:
+            # gh auth token コマンドでトークンを取得
+            result = subprocess.run(
+                ["gh", "auth", "token"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError:
+            # フォールバック: 環境変数から取得
+            return os.environ.get("GITHUB_TOKEN", "test_token")
+    
     async def run_full_integration_test(self) -> Dict[str, Any]:
         """完全統合テスト実行"""
         
@@ -134,9 +150,12 @@ class Phase5IntegrationTest:
         """ExecutorAgent初期化テスト"""
         
         # ExecutorAgent作成
+        # GitHub認証トークン取得
+        github_token = self._get_github_token()
+        
         executor = ExecutorAgent(
-            github_token="test_token",
-            repo_name="test/repo"
+            github_token=github_token,
+            repo_name="hkrhd/kaggle-claude-mother"
         )
         
         # 基本属性確認
@@ -392,9 +411,12 @@ class Phase5IntegrationTest:
         """エンドツーエンド技術実装テスト"""
         
         # ExecutorAgent作成
+        # GitHub認証トークン取得
+        github_token = self._get_github_token()
+        
         executor = ExecutorAgent(
-            github_token="test_token",
-            repo_name="test/repo"
+            github_token=github_token,
+            repo_name="hkrhd/kaggle-claude-mother"
         )
         
         # 技術実装実行（フル統合）
@@ -438,9 +460,12 @@ class Phase5IntegrationTest:
         """パフォーマンス・スケーラビリティテスト"""
         
         # ExecutorAgent作成
+        # GitHub認証トークン取得
+        github_token = self._get_github_token()
+        
         executor = ExecutorAgent(
-            github_token="test_token",
-            repo_name="test/repo"
+            github_token=github_token,
+            repo_name="hkrhd/kaggle-claude-mother"
         )
         
         # 複数技術の実行テスト（簡略化）

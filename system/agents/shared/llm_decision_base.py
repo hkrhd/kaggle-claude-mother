@@ -15,13 +15,26 @@ from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Any, Union
 from enum import Enum
 
+# Claude Code実行時のモデル定数
+# 実際のClaude Code実行時は --model sonnet オプションを使用
+# 例: claude code --model sonnet "プロンプト"
+CLAUDE_MODEL = "sonnet"  # 常に最新のSonnetを使用
+
+# デフォルトモデル設定（全判断タイプで統一）
+DEFAULT_MODEL_SUBMISSION = CLAUDE_MODEL     # 提出判断用
+DEFAULT_MODEL_TECHNICAL = CLAUDE_MODEL      # 技術統合用
+DEFAULT_MODEL_DIAGNOSTIC = CLAUDE_MODEL     # 異常診断用
+DEFAULT_MODEL_RESOURCE = CLAUDE_MODEL       # リソース配分用
+DEFAULT_MODEL_RISK = CLAUDE_MODEL           # リスク評価用
+
 # Claude APIクライアント（仮想実装）
 class ClaudeClient:
     """Claude API統合クライアント（仮想実装）"""
     
-    def __init__(self, api_key: str = "demo_key"):
+    def __init__(self, api_key: str = "demo_key", model: str = None):
         self.api_key = api_key
-        self.model = "claude-3-sonnet-20240229"
+        # モデルが指定されていない場合はデフォルトを使用
+        self.model = model if model else CLAUDE_MODEL
     
     async def complete(
         self,
@@ -294,6 +307,21 @@ class LLMDecisionEngine(ABC):
             LLMDecisionType.RISK_ASSESSMENT: 0.2       # 保守的
         }
         return temp_map.get(decision_type, 0.3)
+    
+    def _get_model(self, decision_type: LLMDecisionType) -> str:
+        """判断タイプ別モデル選択
+        
+        プロンプトごとに最適なモデルを選択。
+        ファイル上部の定数を変更することで簡単にモデル変更可能。
+        """
+        model_map = {
+            LLMDecisionType.SUBMISSION_DECISION: DEFAULT_MODEL_SUBMISSION,
+            LLMDecisionType.TECHNICAL_INTEGRATION: DEFAULT_MODEL_TECHNICAL,
+            LLMDecisionType.DIAGNOSTIC_ANALYSIS: DEFAULT_MODEL_DIAGNOSTIC,
+            LLMDecisionType.RESOURCE_ALLOCATION: DEFAULT_MODEL_RESOURCE,
+            LLMDecisionType.RISK_ASSESSMENT: DEFAULT_MODEL_RISK
+        }
+        return model_map.get(decision_type, CLAUDE_MODEL)
     
     def _update_performance_stats(self, response: LLMDecisionResponse):
         """パフォーマンス統計更新"""

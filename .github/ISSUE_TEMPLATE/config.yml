@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/hkrhd/kaggle-claude-mother/blob/main/README.md
+    about: プロジェクトのドキュメントを参照
+  - name: 💬 Discussions
+    url: https://github.com/hkrhd/kaggle-claude-mother/discussions
+    about: 質問や提案はこちらで議論
+  - name: 🐛 Bug Report (Manual)
+    url: https://github.com/hkrhd/kaggle-claude-mother/issues/new
+    about: エージェント以外のバグ報告

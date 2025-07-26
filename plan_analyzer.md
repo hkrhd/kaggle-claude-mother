@@ -40,7 +40,8 @@ system/agents/analyzer/
 │   ├── technical_feasibility.py    # 実装可能性判定
 │   ├── performance_estimator.py    # 性能・計算コスト推定
 │   ├── difficulty_scorer.py        # 技術難易度評価
-│   └── gpu_requirement_analyzer.py # GPU最適化要件分析
+│   ├── gpu_requirement_analyzer.py # GPU最適化要件分析
+│   └── llm_multi_stage_analyzer.py # 多段階LLM分析オーケストレータ
 ├── knowledge_base/
 │   ├── grandmaster_patterns.py     # グランドマスター解法DB
 │   ├── technique_catalog.py        # 手法カタログ管理
@@ -48,7 +49,8 @@ system/agents/analyzer/
 └── utils/
     ├── web_scraper.py         # 高度スクレイピング
     ├── pdf_extractor.py       # PDF解析・要約
-    └── semantic_matcher.py    # 意味的マッチング
+    ├── semantic_matcher.py    # 意味的マッチング
+    └── llm_client.py          # LLM APIクライアント
 ```
 
 **設計根拠**:
@@ -56,7 +58,56 @@ system/agents/analyzer/
 - **自動評価**: 人間判断不要の定量的実装可能性評価
 - **知識蓄積**: 過去調査結果の再利用・パターン学習
 
-### 3. グランドマスター解法分析システム
+### 3. 多段階LLM分析システム
+
+#### 5段階深層分析プロセス
+```python
+class MultiStageLLMAnalyzer:
+    """API制限を考慮せず、必要なだけLLMを活用して最高精度の分析を実現"""
+    
+    async def execute_full_analysis(self, competition_info):
+        # Stage 1: 競技全体像の把握
+        initial_analysis = await self.stage1_initial_analysis(competition_info)
+        
+        # Stage 2: グランドマスター解法の個別深層分析（TOP10を個別に）
+        gm_analyses = []
+        for solution in self.get_top_solutions(10):
+            analysis = await self.stage2_gm_solution_analysis(solution)
+            gm_analyses.append(analysis)
+        
+        # Stage 3: 解法パターンの統合と洞察抽出
+        pattern_synthesis = await self.stage3_pattern_synthesis(gm_analyses)
+        
+        # Stage 4: 実装戦略の詳細設計
+        implementation_strategy = await self.stage4_implementation_design(
+            pattern_synthesis, self.resource_constraints
+        )
+        
+        # Stage 5: 競合動向を考慮した最終戦略
+        final_strategy = await self.stage5_competitive_strategy(
+            all_previous_analyses=[
+                initial_analysis, gm_analyses, 
+                pattern_synthesis, implementation_strategy
+            ],
+            current_leaderboard=self.get_current_leaderboard()
+        )
+        
+        # 追加の適応的分析（必要に応じて）
+        if self.needs_data_anomaly_investigation(initial_analysis):
+            await self.additional_data_anomaly_analysis()
+        
+        if self.found_novel_techniques(pattern_synthesis):
+            await self.additional_novel_approach_evaluation()
+        
+        return self.compile_final_report(all_analyses)
+```
+
+**設計根拠**:
+- **精度最優先**: API料金を考慮せず、必要なだけ深い分析
+- **段階的深化**: 広く浅くから始め、重要部分を深掘り
+- **適応的分析**: 発見に応じて追加分析を実施
+
+### 4. グランドマスター解法分析システム
 
 #### Owen Zhang/Abhishek Thakur解法パターンDB
 ```python
@@ -91,27 +142,51 @@ GRANDMASTER_PATTERNS = {
 - **再現性評価**: 個人スキル・環境での実装可能性判定
 - **効率優先**: 高成功率手法への集中リソース配分
 
-#### 技術実装可能性スコアリング
+#### LLMを活用した深層実装可能性評価
 ```python
-def calculate_feasibility_score(technique_info):
-    factors = {
-        "implementation_complexity": technique_info.complexity_score,  # 0-1
+async def calculate_deep_feasibility_score(self, technique_info):
+    # ルールベースの初期評価
+    basic_factors = {
+        "implementation_complexity": technique_info.complexity_score,
         "available_libraries": check_library_support(technique_info.requirements),
         "gpu_compatibility": assess_gpu_requirements(technique_info.compute_needs),
         "time_constraint": estimate_implementation_time(technique_info.scope),
         "domain_expertise": match_skill_requirements(technique_info.expertise_level)
     }
     
-    # 重み付き総合評価
-    feasibility = (
-        factors["implementation_complexity"] * 0.3 +
-        factors["available_libraries"] * 0.2 + 
-        factors["gpu_compatibility"] * 0.2 +
-        factors["time_constraint"] * 0.2 +
-        factors["domain_expertise"] * 0.1
+    # LLMによる深層評価（複数回呼び出し）
+    # 1. 技術の本質的理解
+    essence_understanding = await self.llm_client.analyze(
+        prompt="analyzer_grandmaster_solution_extraction.md",
+        data=technique_info
     )
     
-    return min(feasibility, 1.0)
+    # 2. 実装上の落とし穴予測
+    pitfall_prediction = await self.llm_client.analyze(
+        prompt="analyzer_implementation_pitfalls.md",
+        data={
+            "technique": technique_info,
+            "essence": essence_understanding
+        }
+    )
+    
+    # 3. ROIの詳細評価
+    roi_evaluation = await self.llm_client.analyze(
+        prompt="analyzer_implementation_roi_evaluation.md",
+        data={
+            "technique": technique_info,
+            "basic_factors": basic_factors,
+            "pitfalls": pitfall_prediction
+        }
+    )
+    
+    # 統合スコア算出
+    return {
+        "feasibility_score": roi_evaluation.adjusted_roi,
+        "confidence": roi_evaluation.confidence,
+        "critical_factors": roi_evaluation.critical_factors,
+        "implementation_plan": roi_evaluation.optimal_plan
+    }
 ```
 
 **設計意図**:
@@ -502,25 +577,61 @@ error_handling_prompts:
 
 ### 9. 初期実装スコープ
 
-#### Phase 1: 基本技術調査機能（1週間）
-1. **Kaggle優勝解法収集**: 同類コンペ上位10解法の自動分析
-2. **基本実装可能性判定**: 複雑度・時間・GPU要件の評価
-3. **GitHub Issue技術レポート**: 構造化分析結果の自動出力
-4. **グランドマスターパターンDB**: Owen Zhang/Abhishek手法の基本DB
+#### Phase 1: 多段階LLM分析基盤構築（1週間）
+1. **5段階LLM分析フレームワーク**: 
+   - Stage 1-5の分析パイプライン実装
+   - 並列LLM呼び出し最適化
+   - 分析結果キャッシュシステム
+2. **グランドマスター解法深層分析**: 
+   - TOP10解法の個別LLM分析
+   - 解法の「なぜ」を理解するプロンプト
+   - 成功パターンの本質抽出
+3. **実装ROI詳細評価システム**: 
+   - 技術ごとのLLM評価
+   - メダル獲得への寄与度定量化
+   - 優先順位付き実装計画
+4. **改善されたGitHub Issueテンプレート**: 
+   - 多段階分析結果の構造化表示
+   - 実装推奨の明確な優先順位
+   - 次エージェントへの明確な指示
 
-#### Phase 2: 高度分析機能（2週間）
-1. **arXiv最新論文監視**: 関連分野新技術の自動スクリーニング
-2. **意味的技術マッチング**: 過去解法との類似性・差分分析
-3. **計算コスト最適化**: GPU時間配分・並列化要件の詳細分析
-4. **失敗リスク予測**: 実装困難技術の事前警告システム
+#### Phase 2: 競合分析と差別化戦略（2週間）
+1. **競合動向LLM分析**: 
+   - リーダーボード変化の深層分析
+   - 他チーム戦略の推測
+   - 差別化機会の特定
+2. **適応的追加分析システム**: 
+   - データ異常検出時の深掘り
+   - 新技術発見時の詳細評価
+   - 競合予想外動向への対応
+3. **パターン統合と勝利方程式**: 
+   - 複数解法からの共通成功要因
+   - メダル獲得への最短経路
+   - リスクヘッジ戦略
+4. **arXiv最新論文監視**: 
+   - LLMによる関連性評価
+   - 実装可能性の即座判断
+   - 競争優位性の評価
 
-#### Phase 3: 学習・最適化（1週間）
-1. **知識ベース構築**: 技術成功・失敗パターンの蓄積・学習
-2. **推奨精度向上**: 過去実績フィードバックによる改良
-3. **自動優先順位**: メダル確率寄与度による技術ランキング
-4. **executor連携**: 実装指針・テンプレート自動生成
+#### Phase 3: フィードバックループと最適化（1週間）
+1. **分析結果の検証と改善**: 
+   - LLM分析精度の追跡
+   - 予測と実績の乖離分析
+   - プロンプトの継続的改善
+2. **知識ベース自動更新**: 
+   - 成功/失敗パターンの蓄積
+   - 競技タイプ別攻略法DB
+   - 次競技への転移学習
+3. **Executorエージェント連携強化**: 
+   - 詳細実装指針の自動生成
+   - コードテンプレート提供
+   - リアルタイム進捗監視
+4. **メダル獲得確率最大化調整**: 
+   - 分析結果の重み付け最適化
+   - リソース配分の動的調整
+   - 最終盤戦略の精緻化
 
-### 9. テスト戦略
+### 10. テスト戦略
 
 #### 技術調査精度テスト
 - 過去コンペでの技術推奨 vs 実際優勝解法の一致率測定
@@ -539,10 +650,12 @@ error_handling_prompts:
 
 ## 成功指標
 
-1. **技術推奨精度**: 推奨技術のメダル寄与率 > 70%
-2. **情報収集効率**: 関連技術情報の収集完了時間 < 2時間
-3. **実装成功率**: 推奨技術の実装完了率 > 80%
-4. **知識蓄積効果**: 同類コンペでの推奨精度向上率 > 15%
+1. **技術推奨精度**: 推奨技術のメダル寄与率 > 85%（LLM多段階分析により向上）
+2. **分析深度**: 各解法の「なぜ」の理解度 > 90%
+3. **情報収集効率**: 5段階分析完了時間 < 4時間（並列化により）
+4. **実装成功率**: 推奨技術の実装完了率 > 90%
+5. **知識蓄積効果**: 同類コンペでの推奨精度向上率 > 25%
+6. **差別化成功率**: 他チームが見落とした技術の発見率 > 30%
 
 ## リスク対策
 

@@ -46,6 +46,11 @@ system/agents/executor/
 │   ├── resource_monitor.py         # GPU使用量・時間制限監視
 │   ├── failure_recovery.py         # 実行失敗時の自動復旧
 │   └── result_collector.py         # 結果統合・評価・提出判断
+├── submission_strategy/
+│   ├── submission_decision_agent.py # LLM提出判断エージェント
+│   ├── experiment_strategy.py      # 実験戦略LLM分析
+│   ├── competitor_predictor.py     # 競合動向予測LLM
+│   └── final_day_strategist.py     # 最終日戦略LLM
 ├── optimization_engines/
 │   ├── hyperparameter_tuner.py     # ベイズ最適化・Optuna統合
 │   ├── feature_engineering.py      # 自動特徴生成・選択
@@ -54,7 +59,8 @@ system/agents/executor/
 └── utils/
     ├── cloud_authenticator.py      # 各クラウド認証管理
     ├── data_transfer.py            # データ転送・同期
-    └── performance_tracker.py      # 実行性能・コスト追跡
+    ├── performance_tracker.py      # 実行性能・コスト追跡
+    └── llm_client.py               # LLM APIクライアント
 ```
 
 **設計根拠**:
@@ -62,7 +68,67 @@ system/agents/executor/
 - **リソース最適化**: 無料枠最大活用・時間制限回避の自動管理
 - **障害耐性**: 単一環境障害時の自動切り替え・継続実行
 
-### 3. クラウド実行環境統合システム
+### 3. 多段階LLM提出戦略システム
+
+#### 3段階意思決定プロセス
+```python
+class MultiStageSubmissionStrategy:
+    """LLMを複数回活用し、最適な提出タイミングを判断"""
+    
+    async def make_submission_decision(self, context):
+        # Stage 1: 実験戦略の最適化
+        experiment_strategy = await self.llm_client.analyze(
+            prompt="executor_experiment_strategy.md",
+            data={
+                "current_status": context.current_performance,
+                "available_resources": context.resources,
+                "pending_experiments": context.experiment_queue
+            }
+        )
+        
+        # Stage 2: 競合動向の予測
+        competitor_prediction = await self.llm_client.analyze(
+            prompt="executor_competitor_prediction.md",
+            data={
+                "leaderboard_dynamics": context.leaderboard_history,
+                "competitor_profiles": context.competitor_analysis,
+                "time_factors": context.time_remaining
+            }
+        )
+        
+        # Stage 3: 最終提出判断
+        final_decision = await self.llm_client.analyze(
+            prompt="executor_submission_decision.md",
+            data={
+                "experiment_analysis": experiment_strategy,
+                "competitor_analysis": competitor_prediction,
+                "current_performance": context.current_performance,
+                "risk_assessment": context.risk_factors
+            }
+        )
+        
+        # 低確信度時の追加分析
+        if final_decision.confidence < 0.7:
+            additional_analysis = await self._perform_additional_analysis(context)
+            final_decision = self._integrate_analyses([final_decision, additional_analysis])
+        
+        # 最終日特別分析
+        if context.hours_remaining < 24:
+            final_day_strategy = await self.llm_client.analyze(
+                prompt="executor_final_day_strategy.md",
+                data=context
+            )
+            final_decision = self._integrate_final_day_strategy(final_decision, final_day_strategy)
+        
+        return final_decision
+```
+
+**設計根拠**:
+- **精度最優先**: API料金を考慮せず、複数観点から分析
+- **文脈継承**: 各段階の分析結果を統合
+- **適応的分析**: 状況に応じた追加分析
+
+### 4. クラウド実行環境統合システム
 
 #### リソース配分・最適化アルゴリズム
 ```python
@@ -470,23 +536,34 @@ class ExecutionOrchestrator:
 
 ### 8. 初期実装スコープ
 
-#### Phase 1: 基本実行機能（1週間）
-1. **単一環境実行**: Kaggle Kernels基本実行・結果取得
-2. **基本ノートブック生成**: analyzerの推奨をコードに変換
-3. **簡単なハイパーパラメータ探索**: Grid/Random Search実装
-4. **GitHub Issue結果報告**: 実行状況・スコアの構造化報告
+#### Phase 1: LLM提出戦略・基本実行機能（1週間）
+1. **多段階LLM提出判断システム**: 
+   - 3段階意思決定フロー実装
+   - 実験戦略・競合予測・提出判断
+   - 最終日特別戦略モジュール
+2. **単一環境実行**: Kaggle Kernels基本実行・結果取得
+3. **基本ノートブック生成**: analyzerの推奨をコードに変換
+4. **改善されたGitHub Issue報告**: 
+   - LLM分析結果を含む詳細レポート
+   - メダル確率・提出戦略の明確な表示
 
-#### Phase 2: 高度実行機能（2週間）
-1. **複数環境並列実行**: Kaggle/Colab/Paperspace統合管理
-2. **グランドマスター級技術実装**: Owen Zhang/Abhishek手法自動実装
-3. **ベイズ最適化**: Optuna統合・分散最適化実行
-4. **自動復旧システム**: 障害時の環境切り替え・継続実行
+#### Phase 2: 競合対策・高度実行機能（2週間）
+1. **競合動向予測システム**: 
+   - リーダーボード変化のLLM分析
+   - 最適提出タイミング戦略
+   - 情報戦略・心理戦要素
+2. **複数環境並列実行**: Kaggle/Colab/Paperspace統合管理
+3. **グランドマスター級技術実装**: Owen Zhang/Abhishek手法自動実装
+4. **ベイズ最適化**: Optuna統合・分散最適化実行
 
-#### Phase 3: 最適化・完成（1週間）
-1. **リソース最適化**: GPU時間配分・実行効率最大化
-2. **高度アンサンブル**: 多層スタッキング・交互作用マイニング
-3. **提出自動化**: 成果判定・最適タイミング提出
-4. **monitor連携**: 継続監視エージェントとの完全統合
+#### Phase 3: 最終盤戦略・完成（1週間）
+1. **最終日特化戦略**: 
+   - 24時間以内の特別分析フロー
+   - 分単位の提出計画
+   - 緊急時対応プロトコル
+2. **リソース最適化**: GPU時間配分・実行効率最大化
+3. **高度アンサンブル**: 多層スタッキング・交互作用マイニング
+4. **Monitorエージェント連携**: 継続監視・異常時即応
 
 ### 9. テスト戦略
 
@@ -507,10 +584,13 @@ class ExecutionOrchestrator:
 
 ## 成功指標
 
-1. **実行成功率**: クラウド環境実行成功率 > 95%
-2. **性能向上**: ベースラインからのスコア改善率 > 10%
-3. **リソース効率**: GPU時間活用率 > 85%
-4. **自動化率**: 人間介入なし実行完了率 > 90%
+1. **提出判断精度**: LLM提出判断の正確性 > 85%（メダル獲得に結びつく率）
+2. **競合予測精度**: 最終日の競合動向予測的中率 > 80%
+3. **実行成功率**: クラウド環境実行成功率 > 95%
+4. **性能向上**: ベースラインからのスコア改善率 > 15%
+5. **リソース効率**: GPU時間活用率 > 85%
+6. **自動化率**: 人間介入なし実行完了率 > 90%
+7. **最終日成功率**: 最終日提出での順位維持/向上率 > 70%
 
 ## リスク対策
 

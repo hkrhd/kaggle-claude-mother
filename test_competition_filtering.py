@@ -7,7 +7,25 @@
 
 import asyncio
 import logging
+import os
+import subprocess
 from system.dynamic_competition_manager.dynamic_competition_manager import DynamicCompetitionManager
+
+def get_github_token():
+    """GitHub認証トークンを動的に取得"""
+    try:
+        # gh auth token コマンドでトークンを取得
+        result = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError:
+        # フォールバック: 環境変数から取得
+        return os.environ.get("GITHUB_TOKEN", "test_token")
+
 
 async def test_competition_filtering():
     """コンペフィルタリングテスト"""
@@ -21,10 +39,13 @@ async def test_competition_filtering():
     print("🧪 コンペ選択フィルタリング機能テスト開始")
     print("=" * 60)
     
-    # テスト用トークンでマネージャー初期化
+    # GitHub認証トークン取得
+    github_token = get_github_token()
+    
+    # マネージャー初期化
     manager = DynamicCompetitionManager(
-        github_token="test_token",
-        repo_name="test_repo"
+        github_token=github_token,
+        repo_name="hkrhd/kaggle-claude-mother"
     )
     
     # 新競技スキャン実行
